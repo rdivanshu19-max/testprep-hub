@@ -15,6 +15,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminExtractionRouteImport } from './routes/_authenticated/admin/extraction'
+import { Route as AuthenticatedAdminExtractionJobIdRouteImport } from './routes/_authenticated/admin/extraction.$jobId'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -45,19 +47,35 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedAdminExtractionRoute =
+  AuthenticatedAdminExtractionRouteImport.update({
+    id: '/extraction',
+    path: '/extraction',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
+const AuthenticatedAdminExtractionJobIdRoute =
+  AuthenticatedAdminExtractionJobIdRouteImport.update({
+    id: '/$jobId',
+    path: '/$jobId',
+    getParentRoute: () => AuthenticatedAdminExtractionRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
   '/admin/': typeof AuthenticatedAdminIndexRoute
+  '/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
   '/admin': typeof AuthenticatedAdminIndexRoute
+  '/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -66,13 +84,28 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/admin' | '/dashboard' | '/admin/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/admin'
+    | '/dashboard'
+    | '/admin/extraction'
+    | '/admin/'
+    | '/admin/extraction/$jobId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/admin'
+  to:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/admin/extraction'
+    | '/admin'
+    | '/admin/extraction/$jobId'
   id:
     | '__root__'
     | '/'
@@ -80,7 +113,9 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
+    | '/_authenticated/admin/extraction'
     | '/_authenticated/admin/'
+    | '/_authenticated/admin/extraction/$jobId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -133,15 +168,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/extraction': {
+      id: '/_authenticated/admin/extraction'
+      path: '/extraction'
+      fullPath: '/admin/extraction'
+      preLoaderRoute: typeof AuthenticatedAdminExtractionRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/extraction/$jobId': {
+      id: '/_authenticated/admin/extraction/$jobId'
+      path: '/$jobId'
+      fullPath: '/admin/extraction/$jobId'
+      preLoaderRoute: typeof AuthenticatedAdminExtractionJobIdRouteImport
+      parentRoute: typeof AuthenticatedAdminExtractionRoute
+    }
   }
 }
 
+interface AuthenticatedAdminExtractionRouteChildren {
+  AuthenticatedAdminExtractionJobIdRoute: typeof AuthenticatedAdminExtractionJobIdRoute
+}
+
+const AuthenticatedAdminExtractionRouteChildren: AuthenticatedAdminExtractionRouteChildren =
+  {
+    AuthenticatedAdminExtractionJobIdRoute:
+      AuthenticatedAdminExtractionJobIdRoute,
+  }
+
+const AuthenticatedAdminExtractionRouteWithChildren =
+  AuthenticatedAdminExtractionRoute._addFileChildren(
+    AuthenticatedAdminExtractionRouteChildren,
+  )
+
 interface AuthenticatedAdminRouteRouteChildren {
+  AuthenticatedAdminExtractionRoute: typeof AuthenticatedAdminExtractionRouteWithChildren
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
 const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
   {
+    AuthenticatedAdminExtractionRoute:
+      AuthenticatedAdminExtractionRouteWithChildren,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   }
 
