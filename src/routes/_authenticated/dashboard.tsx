@@ -53,19 +53,22 @@ function Dashboard() {
           ))}
         </div>
 
-        <div className="mt-10 rounded-xl border border-dashed border-border bg-card p-8 text-sm text-muted-foreground">
-          Your test catalogue, recent attempts, and progress widgets land here next.
-          For now,{" "}
+        <div className="mt-10 grid gap-4 lg:grid-cols-2">
+          <Link to="/tests" className="group rounded-xl border border-border bg-card p-6 hover:border-foreground/40">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Practice</div>
+            <h3 className="mt-2 text-lg font-semibold">Browse published tests →</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Full-length CBTs, chapter tests, and PYQs ready to attempt.</p>
+          </Link>
           {isAdmin ? (
-            <>
-              jump into{" "}
-              <Link to="/admin/extraction" className="text-primary underline-offset-4 hover:underline">
-                the PDF → CBT pipeline
-              </Link>{" "}
-              to ingest your first paper.
-            </>
+            <Link to="/admin/extraction" className="group rounded-xl border border-border bg-card p-6 hover:border-foreground/40">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Admin</div>
+              <h3 className="mt-2 text-lg font-semibold">PDF → CBT pipeline →</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Ingest a question paper PDF and publish it as a CBT.</p>
+            </Link>
           ) : (
-            "ask an admin to publish a test."
+            <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
+              More widgets — recent attempts, weak chapters, streak — land here next.
+            </div>
           )}
         </div>
       </main>
