@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedTestsRouteImport } from './routes/_authenticated/tests'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
@@ -33,6 +34,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedTestsRoute = AuthenticatedTestsRouteImport.update({
+  id: '/tests',
+  path: '/tests',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/tests': typeof AuthenticatedTestsRoute
   '/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
   '/admin/taxonomy': typeof AuthenticatedAdminTaxonomyRoute
   '/admin/tests': typeof AuthenticatedAdminTestsRoute
@@ -88,6 +95,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/tests': typeof AuthenticatedTestsRoute
   '/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
   '/admin/taxonomy': typeof AuthenticatedAdminTaxonomyRoute
   '/admin/tests': typeof AuthenticatedAdminTestsRoute
@@ -101,6 +109,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/tests': typeof AuthenticatedTestsRoute
   '/_authenticated/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
   '/_authenticated/admin/taxonomy': typeof AuthenticatedAdminTaxonomyRoute
   '/_authenticated/admin/tests': typeof AuthenticatedAdminTestsRoute
@@ -114,6 +123,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/dashboard'
+    | '/tests'
     | '/admin/extraction'
     | '/admin/taxonomy'
     | '/admin/tests'
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/tests'
     | '/admin/extraction'
     | '/admin/taxonomy'
     | '/admin/tests'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
+    | '/_authenticated/tests'
     | '/_authenticated/admin/extraction'
     | '/_authenticated/admin/taxonomy'
     | '/_authenticated/admin/tests'
@@ -171,6 +183,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/tests': {
+      id: '/_authenticated/tests'
+      path: '/tests'
+      fullPath: '/tests'
+      preLoaderRoute: typeof AuthenticatedTestsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
@@ -263,11 +282,13 @@ const AuthenticatedAdminRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedTestsRoute: typeof AuthenticatedTestsRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedTestsRoute: AuthenticatedTestsRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
