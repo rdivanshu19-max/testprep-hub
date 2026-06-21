@@ -15,6 +15,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminTestsRouteImport } from './routes/_authenticated/admin/tests'
+import { Route as AuthenticatedAdminTaxonomyRouteImport } from './routes/_authenticated/admin/taxonomy'
 import { Route as AuthenticatedAdminExtractionRouteImport } from './routes/_authenticated/admin/extraction'
 import { Route as AuthenticatedAdminExtractionJobIdRouteImport } from './routes/_authenticated/admin/extraction.$jobId'
 
@@ -47,6 +49,17 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
+const AuthenticatedAdminTestsRoute = AuthenticatedAdminTestsRouteImport.update({
+  id: '/tests',
+  path: '/tests',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
+} as any)
+const AuthenticatedAdminTaxonomyRoute =
+  AuthenticatedAdminTaxonomyRouteImport.update({
+    id: '/taxonomy',
+    path: '/taxonomy',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
+  } as any)
 const AuthenticatedAdminExtractionRoute =
   AuthenticatedAdminExtractionRouteImport.update({
     id: '/extraction',
@@ -66,6 +79,8 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
+  '/admin/taxonomy': typeof AuthenticatedAdminTaxonomyRoute
+  '/admin/tests': typeof AuthenticatedAdminTestsRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
 }
@@ -74,6 +89,8 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
+  '/admin/taxonomy': typeof AuthenticatedAdminTaxonomyRoute
+  '/admin/tests': typeof AuthenticatedAdminTestsRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
 }
@@ -85,6 +102,8 @@ export interface FileRoutesById {
   '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
+  '/_authenticated/admin/taxonomy': typeof AuthenticatedAdminTaxonomyRoute
+  '/_authenticated/admin/tests': typeof AuthenticatedAdminTestsRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
 }
@@ -96,6 +115,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/admin/extraction'
+    | '/admin/taxonomy'
+    | '/admin/tests'
     | '/admin/'
     | '/admin/extraction/$jobId'
   fileRoutesByTo: FileRoutesByTo
@@ -104,6 +125,8 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/admin/extraction'
+    | '/admin/taxonomy'
+    | '/admin/tests'
     | '/admin'
     | '/admin/extraction/$jobId'
   id:
@@ -114,6 +137,8 @@ export interface FileRouteTypes {
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
     | '/_authenticated/admin/extraction'
+    | '/_authenticated/admin/taxonomy'
+    | '/_authenticated/admin/tests'
     | '/_authenticated/admin/'
     | '/_authenticated/admin/extraction/$jobId'
   fileRoutesById: FileRoutesById
@@ -168,6 +193,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/tests': {
+      id: '/_authenticated/admin/tests'
+      path: '/tests'
+      fullPath: '/admin/tests'
+      preLoaderRoute: typeof AuthenticatedAdminTestsRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
+    '/_authenticated/admin/taxonomy': {
+      id: '/_authenticated/admin/taxonomy'
+      path: '/taxonomy'
+      fullPath: '/admin/taxonomy'
+      preLoaderRoute: typeof AuthenticatedAdminTaxonomyRouteImport
+      parentRoute: typeof AuthenticatedAdminRouteRoute
+    }
     '/_authenticated/admin/extraction': {
       id: '/_authenticated/admin/extraction'
       path: '/extraction'
@@ -202,6 +241,8 @@ const AuthenticatedAdminExtractionRouteWithChildren =
 
 interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminExtractionRoute: typeof AuthenticatedAdminExtractionRouteWithChildren
+  AuthenticatedAdminTaxonomyRoute: typeof AuthenticatedAdminTaxonomyRoute
+  AuthenticatedAdminTestsRoute: typeof AuthenticatedAdminTestsRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
 }
 
@@ -209,6 +250,8 @@ const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren
   {
     AuthenticatedAdminExtractionRoute:
       AuthenticatedAdminExtractionRouteWithChildren,
+    AuthenticatedAdminTaxonomyRoute: AuthenticatedAdminTaxonomyRoute,
+    AuthenticatedAdminTestsRoute: AuthenticatedAdminTestsRoute,
     AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   }
 
