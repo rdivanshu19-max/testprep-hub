@@ -200,7 +200,7 @@ function JobPage() {
           ) : (
             <div className="space-y-4">
               {questions.map((q) => (
-                <QuestionCard key={q.id} q={q} jobId={jobId} />
+                <QuestionCard key={q.id} q={q as unknown as Q} jobId={jobId} />
               ))}
             </div>
           )}
