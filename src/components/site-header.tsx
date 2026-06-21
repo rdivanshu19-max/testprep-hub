@@ -43,6 +43,9 @@ export function SiteHeader({ variant = "public" }: { variant?: "public" | "app" 
               <Link to="/dashboard" className="hover:text-foreground" activeProps={{ className: "text-foreground" }}>
                 Dashboard
               </Link>
+              <Link to="/tests" className="hover:text-foreground" activeProps={{ className: "text-foreground" }}>
+                Tests
+              </Link>
             </>
           )}
         </nav>
