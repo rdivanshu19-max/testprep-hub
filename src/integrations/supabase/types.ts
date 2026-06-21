@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      attempt_answers: {
+        Row: {
+          attempt_id: string
+          chosen_answer: string | null
+          created_at: string
+          id: string
+          is_correct: boolean | null
+          marked_for_review: boolean
+          question_id: string
+          time_spent_sec: number
+          updated_at: string
+          visited: boolean
+        }
+        Insert: {
+          attempt_id: string
+          chosen_answer?: string | null
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          marked_for_review?: boolean
+          question_id: string
+          time_spent_sec?: number
+          updated_at?: string
+          visited?: boolean
+        }
+        Update: {
+          attempt_id?: string
+          chosen_answer?: string | null
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          marked_for_review?: boolean
+          question_id?: string
+          time_spent_sec?: number
+          updated_at?: string
+          visited?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attempt_answers_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "test_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attempt_answers_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chapters: {
         Row: {
           created_at: string
@@ -516,6 +570,65 @@ export type Database = {
         }
         Relationships: []
       }
+      test_attempts: {
+        Row: {
+          correct_count: number
+          created_at: string
+          id: string
+          incorrect_count: number
+          score: number | null
+          started_at: string
+          status: Database["public"]["Enums"]["attempt_status"]
+          submitted_at: string | null
+          test_id: string
+          time_spent_sec: number
+          total_marks: number | null
+          unattempted_count: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          correct_count?: number
+          created_at?: string
+          id?: string
+          incorrect_count?: number
+          score?: number | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["attempt_status"]
+          submitted_at?: string | null
+          test_id: string
+          time_spent_sec?: number
+          total_marks?: number | null
+          unattempted_count?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          correct_count?: number
+          created_at?: string
+          id?: string
+          incorrect_count?: number
+          score?: number | null
+          started_at?: string
+          status?: Database["public"]["Enums"]["attempt_status"]
+          submitted_at?: string | null
+          test_id?: string
+          time_spent_sec?: number
+          total_marks?: number | null
+          unattempted_count?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_attempts_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       test_questions: {
         Row: {
           id: string
@@ -682,6 +795,7 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "student"
+      attempt_status: "in_progress" | "submitted" | "abandoned"
       exam_type: "jee_main" | "jee_advanced" | "neet"
       extraction_question_status: "draft" | "edited" | "approved" | "rejected"
       extraction_status:
@@ -831,6 +945,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "student"],
+      attempt_status: ["in_progress", "submitted", "abandoned"],
       exam_type: ["jee_main", "jee_advanced", "neet"],
       extraction_question_status: ["draft", "edited", "approved", "rejected"],
       extraction_status: [
