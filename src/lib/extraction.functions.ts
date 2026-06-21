@@ -271,8 +271,8 @@ export const processNextBatch = createServerFn({ method: "POST" })
         .from("extraction_batches")
         .update({
           status: "done",
-          raw_response: raw as Record<string, unknown>,
-          parsed: { questions } as Record<string, unknown>,
+          raw_response: raw as never,
+          parsed: { questions } as never,
         })
         .eq("id", batch.id);
 
