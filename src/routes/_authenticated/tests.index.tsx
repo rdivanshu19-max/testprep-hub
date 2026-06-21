@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/site-header";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 
-export const Route = createFileRoute("/_authenticated/tests")({
+export const Route = createFileRoute("/_authenticated/tests/")({
   head: () => ({ meta: [{ title: "Tests — RankersTestHub" }] }),
   component: TestsCatalogue,
 });
