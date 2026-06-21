@@ -359,7 +359,7 @@ export const runValidation = createServerFn({ method: "POST" })
       broken_equations: report.brokenEquations,
       invalid_json: report.invalidJson,
       score: report.score,
-      raw: raw as Record<string, unknown>,
+      raw: raw as never,
     });
 
     await context.supabase
@@ -448,7 +448,7 @@ export const updateExtractionQuestion = createServerFn({ method: "POST" })
     if (data.type !== undefined) patch.type = data.type;
     const { error } = await context.supabase
       .from("extraction_questions")
-      .update(patch)
+      .update(patch as never)
       .eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
