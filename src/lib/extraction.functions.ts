@@ -7,6 +7,23 @@ import { z } from "zod";
 
 const PDF_BUCKET = "pdf-uploads";
 
+function errorStack(error: unknown) {
+  if (error instanceof Error) return error.stack ?? error.message;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function logExtractionError(stage: string, jobId: string, error: unknown) {
+  console.error(`[pdf-extraction:${stage}] job=${jobId}\n${errorStack(error)}`);
+}
+
 // ---------- admin guard ----------
 async function assertAdmin(ctx: {
   supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>;
@@ -120,7 +137,6 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const { splitPdfIntoBatches } = await import("./extraction.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Mark splitting
@@ -140,7 +156,20 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
     if (pdfDl.error || !pdfDl.data) throw new Error(`PDF download: ${pdfDl.error?.message}`);
     const pdfBytes = new Uint8Array(await pdfDl.data.arrayBuffer());
 
-    const { pageCount, batches } = await splitPdfIntoBatches(pdfBytes);
+    let pageCount = 0;
+    let batches: Awaited<ReturnType<typeof import("./extraction.server").splitPdfIntoBatches>>["batches"] = [];
+    try {
+      const { splitPdfIntoBatches } = await import("./extraction.server");
+      ({ pageCount, batches } = await splitPdfIntoBatches(pdfBytes));
+    } catch (err) {
+      const stack = errorStack(err);
+      logExtractionError("split", data.jobId, err);
+      await context.supabase
+        .from("extraction_jobs")
+        .update({ status: "failed", last_error: stack.slice(0, 4000) })
+        .eq("id", data.jobId);
+      throw err;
+    }
 
     // Persist batch PDFs in question-images bucket (admin-only, signed URLs only)
     for (const b of batches) {
@@ -290,14 +319,16 @@ export const processNextBatch = createServerFn({ method: "POST" })
         pendingCount: pendingCount ?? 0,
       };
     } catch (err) {
-      const msg = (err as Error).message;
+      const msg = errorMessage(err);
+      const stack = errorStack(err);
+      logExtractionError("process-batch", data.jobId, err);
       await context.supabase
         .from("extraction_batches")
-        .update({ status: "failed", last_error: msg })
+        .update({ status: "failed", last_error: stack.slice(0, 4000) })
         .eq("id", batch.id);
       await context.supabase
         .from("extraction_jobs")
-        .update({ last_error: msg })
+        .update({ last_error: stack.slice(0, 4000) || msg })
         .eq("id", data.jobId);
       throw err;
     }
