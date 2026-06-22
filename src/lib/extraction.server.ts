@@ -21,7 +21,7 @@ export async function splitPdfIntoBatches(pdfBytes: Uint8Array): Promise<{
   // pdf-lib's package ESM entry imports tslib/pako in a way that can break under
   // Vite/Rolldown interop (`__toESM(...).default` undefined). The bundled ESM
   // build is self-contained and avoids that crash.
-  const { PDFDocument } = await import("pdf-lib/dist/pdf-lib.esm.js");
+  const { PDFDocument } = (await import("pdf-lib/dist/pdf-lib.esm.js")) as typeof import("pdf-lib");
   const src = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const pageCount = src.getPageCount();
   const batches: PdfBatch[] = [];
