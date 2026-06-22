@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { InlineMath, BlockMath } from "react-katex";
+import { InlineMath, BlockMath } from "@/components/math";
 
 export const Route = createFileRoute("/_authenticated/tests/$testId")({
   head: () => ({ meta: [{ title: "Test — RankersTestHub" }] }),

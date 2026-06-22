@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { InlineMath } from "react-katex";
+import { InlineMath } from "@/components/math";
 
 export const Route = createFileRoute("/_authenticated/admin/extraction/$jobId")({
   head: () => ({ meta: [{ title: "Extraction job — Admin" }] }),
