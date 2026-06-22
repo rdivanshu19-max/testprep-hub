@@ -1,8 +1,6 @@
 // SERVER-ONLY helpers for the PDF→CBT extraction pipeline.
 // Imported dynamically from inside server-function handlers — never from client code.
 
-import { PDFDocument } from "pdf-lib";
-
 export const BATCH_PAGE_SIZE = 2;
 
 // ---------------------------------------------------------------------------
@@ -20,6 +18,10 @@ export async function splitPdfIntoBatches(pdfBytes: Uint8Array): Promise<{
   pageCount: number;
   batches: PdfBatch[];
 }> {
+  // pdf-lib's package ESM entry imports tslib/pako in a way that can break under
+  // Vite/Rolldown interop (`__toESM(...).default` undefined). The bundled ESM
+  // build is self-contained and avoids that crash.
+  const { PDFDocument } = await import("pdf-lib/dist/pdf-lib.esm.js");
   const src = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const pageCount = src.getPageCount();
   const batches: PdfBatch[] = [];
