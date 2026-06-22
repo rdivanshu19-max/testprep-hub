@@ -225,7 +225,6 @@ export const processNextBatch = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
-    const { extractQuestionsWithGemini } = await import("./extraction.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Find next pending batch (or specific retry batch)
@@ -271,6 +270,7 @@ export const processNextBatch = createServerFn({ method: "POST" })
       if (dl.error || !dl.data) throw new Error(`Batch download: ${dl.error?.message}`);
       const pdfBytes = new Uint8Array(await dl.data.arrayBuffer());
 
+      const { extractQuestionsWithGemini } = await import("./extraction.server");
       const { questions, raw } = await extractQuestionsWithGemini(apiKey, pdfBytes);
 
       // Replace any existing rows for this batch (idempotent retries)
@@ -374,11 +374,23 @@ export const runValidation = createServerFn({ method: "POST" })
       hasImage: !!q.has_image,
       imageUrl: "",
     }));
-    const { report, raw } = await validateWithGroq(
-      apiKey,
-      mapped,
-      job?.expected_question_count ?? null,
-    );
+    let report: Awaited<ReturnType<typeof validateWithGroq>>["report"];
+    let raw: Awaited<ReturnType<typeof validateWithGroq>>["raw"];
+    try {
+      ({ report, raw } = await validateWithGroq(
+        apiKey,
+        mapped,
+        job?.expected_question_count ?? null,
+      ));
+    } catch (err) {
+      const stack = errorStack(err);
+      logExtractionError("validate", data.jobId, err);
+      await context.supabase
+        .from("extraction_jobs")
+        .update({ status: "failed", last_error: stack.slice(0, 4000) })
+        .eq("id", data.jobId);
+      throw err;
+    }
 
     // Persist new report
     await context.supabase.from("extraction_validation_reports").insert({
