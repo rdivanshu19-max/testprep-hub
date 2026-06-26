@@ -42,27 +42,35 @@ function JobPage() {
     queryFn: () => get({ data: { jobId } }),
     refetchInterval: (q) => {
       const s = q.state.data?.job.status;
-      return s === "extracting" || s === "splitting" || s === "validating" ? 1500 : false;
+      return s === "extracting" || s === "splitting" || s === "validating" ? 1200 : false;
     },
   });
 
   const [running, setRunning] = useState(false);
+  const [stageMsg, setStageMsg] = useState<string>("");
+  const autoStartedRef = useRef(false);
 
   const runAll = async () => {
+    if (running) return;
     setRunning(true);
+    setStageMsg("Extracting questions with Gemini…");
     try {
       for (let i = 0; i < 200; i++) {
         const r = await proc({ data: { jobId } });
         qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
         if (r.done) break;
         if (!r.processedBatchId) break;
+        setStageMsg(
+          `Extracted batch (pages ${r.pagesProcessed}, +${r.extractedCount} Qs). ${r.pendingCount} batches left…`,
+        );
       }
-      toast.success("Extraction batches complete");
-      // immediately run Groq validation
+      setStageMsg("Validating with Groq…");
       await validate({ data: { jobId } });
-      toast.success("Validation done");
+      setStageMsg("");
+      toast.success("Extraction + validation complete");
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
     } catch (e) {
+      setStageMsg("");
       toast.error((e as Error).message);
     } finally {
       setRunning(false);
@@ -71,6 +79,7 @@ function JobPage() {
 
   const resplit = async () => {
     try {
+      autoStartedRef.current = false;
       await split({ data: { jobId } });
       toast.success("Re-split complete");
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
@@ -80,7 +89,9 @@ function JobPage() {
   };
 
   const retryAndExtract = async () => {
+    if (running) return;
     setRunning(true);
+    setStageMsg("Re-queuing missing batches…");
     try {
       const r = await retry({ data: { jobId } });
       toast.message(`Re-queued ${r.batchIds.length} batches`);
@@ -89,15 +100,31 @@ function JobPage() {
         qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
         if (p.done || !p.processedBatchId) break;
       }
+      setStageMsg("Validating with Groq…");
       await validate({ data: { jobId } });
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+      setStageMsg("");
       toast.success("Retry + validation complete");
     } catch (e) {
+      setStageMsg("");
       toast.error((e as Error).message);
     } finally {
       setRunning(false);
     }
   };
+
+  // Auto-kick extraction whenever a job is freshly split (status=extracting with pending batches).
+  useEffect(() => {
+    const d = data.data;
+    if (!d || running || autoStartedRef.current) return;
+    const pending = d.batches.filter((b) => b.status === "pending").length;
+    if (d.job.status === "extracting" && pending > 0) {
+      autoStartedRef.current = true;
+      void runAll();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.data?.job.status, data.data?.batches.length]);
+
 
   const publishMut = useMutation({
     mutationFn: () => publish({ data: { jobId, durationMin: 180, markingScheme: { correct: 4, incorrect: -1, unattempted: 0 } } }),
