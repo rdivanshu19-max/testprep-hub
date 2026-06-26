@@ -61,7 +61,7 @@ export const getExtractionJob = createServerFn({ method: "GET" })
   .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const [{ data: job }, { data: questions }, { data: report }, { data: batches }] = await Promise.all([
+    const [{ data: job }, { data: questions }, { data: report }, { data: batches }, { data: logs }] = await Promise.all([
       context.supabase.from("extraction_jobs").select("*").eq("id", data.jobId).single(),
       context.supabase
         .from("extraction_questions")
@@ -80,9 +80,15 @@ export const getExtractionJob = createServerFn({ method: "GET" })
         .select("id, page_from, page_to, status, attempts, last_error")
         .eq("job_id", data.jobId)
         .order("page_from", { ascending: true }),
+      context.supabase
+        .from("extraction_audit_log")
+        .select("id, action, payload, created_at")
+        .eq("job_id", data.jobId)
+        .order("created_at", { ascending: false })
+        .limit(50),
     ]);
     if (!job) throw new Error("Job not found");
-    return { job, questions: questions ?? [], report: report ?? null, batches: batches ?? [] };
+    return { job, questions: questions ?? [], report: report ?? null, batches: batches ?? [], logs: logs ?? [] };
   });
 
 // =========================================================================

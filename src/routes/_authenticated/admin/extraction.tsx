@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -34,11 +34,20 @@ const STATUS_STYLES: Record<string, string> = {
 function ExtractionPage() {
   const { user } = (Route.useRouteContext() as unknown) as { user: { id: string } };
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const list = useServerFn(listExtractionJobs);
-  const createJob = useServerFn(createExtractionJob);
   const split = useServerFn(splitExtractionJob);
 
-  const jobs = useQuery({ queryKey: ["extraction-jobs"], queryFn: () => list() });
+  const jobs = useQuery({
+    queryKey: ["extraction-jobs"],
+    queryFn: () => list(),
+    refetchInterval: (q) => {
+      const active = (q.state.data ?? []).some((j) =>
+        ["splitting", "extracting", "validating"].includes(j.status),
+      );
+      return active ? 2000 : false;
+    },
+  });
 
   const startMut = useMutation({
     mutationFn: async (jobId: string) => split({ data: { jobId } }),
@@ -64,12 +73,14 @@ function ExtractionPage() {
           toast.message("Splitting PDF…");
           try {
             const r = await startMut.mutateAsync(jobId);
-            toast.success(`Split into ${r.batchCount} batches (${r.pageCount} pages)`);
+            toast.success(`Split into ${r.batchCount} batches (${r.pageCount} pages) — opening job`);
+            navigate({ to: "/admin/extraction/$jobId", params: { jobId } });
           } catch (e) {
             toast.error((e as Error).message);
           }
         }}
       />
+
 
       <section className="mt-10">
         <h2 className="text-sm font-semibold tracking-tight text-muted-foreground">Recent jobs</h2>

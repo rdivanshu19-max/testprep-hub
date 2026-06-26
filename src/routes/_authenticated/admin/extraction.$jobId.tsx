@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -41,27 +42,35 @@ function JobPage() {
     queryFn: () => get({ data: { jobId } }),
     refetchInterval: (q) => {
       const s = q.state.data?.job.status;
-      return s === "extracting" || s === "splitting" || s === "validating" ? 1500 : false;
+      return s === "extracting" || s === "splitting" || s === "validating" ? 1200 : false;
     },
   });
 
   const [running, setRunning] = useState(false);
+  const [stageMsg, setStageMsg] = useState<string>("");
+  const autoStartedRef = useRef(false);
 
   const runAll = async () => {
+    if (running) return;
     setRunning(true);
+    setStageMsg("Extracting questions with Gemini…");
     try {
       for (let i = 0; i < 200; i++) {
         const r = await proc({ data: { jobId } });
         qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
         if (r.done) break;
         if (!r.processedBatchId) break;
+        setStageMsg(
+          `Extracted batch (pages ${r.pagesProcessed}, +${r.extractedCount} Qs). ${r.pendingCount} batches left…`,
+        );
       }
-      toast.success("Extraction batches complete");
-      // immediately run Groq validation
+      setStageMsg("Validating with Groq…");
       await validate({ data: { jobId } });
-      toast.success("Validation done");
+      setStageMsg("");
+      toast.success("Extraction + validation complete");
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
     } catch (e) {
+      setStageMsg("");
       toast.error((e as Error).message);
     } finally {
       setRunning(false);
@@ -70,6 +79,7 @@ function JobPage() {
 
   const resplit = async () => {
     try {
+      autoStartedRef.current = false;
       await split({ data: { jobId } });
       toast.success("Re-split complete");
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
@@ -79,7 +89,9 @@ function JobPage() {
   };
 
   const retryAndExtract = async () => {
+    if (running) return;
     setRunning(true);
+    setStageMsg("Re-queuing missing batches…");
     try {
       const r = await retry({ data: { jobId } });
       toast.message(`Re-queued ${r.batchIds.length} batches`);
@@ -88,15 +100,31 @@ function JobPage() {
         qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
         if (p.done || !p.processedBatchId) break;
       }
+      setStageMsg("Validating with Groq…");
       await validate({ data: { jobId } });
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+      setStageMsg("");
       toast.success("Retry + validation complete");
     } catch (e) {
+      setStageMsg("");
       toast.error((e as Error).message);
     } finally {
       setRunning(false);
     }
   };
+
+  // Auto-kick extraction whenever a job is freshly split (status=extracting with pending batches).
+  useEffect(() => {
+    const d = data.data;
+    if (!d || running || autoStartedRef.current) return;
+    const pending = d.batches.filter((b) => b.status === "pending").length;
+    if (d.job.status === "extracting" && pending > 0) {
+      autoStartedRef.current = true;
+      void runAll();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.data?.job.status, data.data?.batches.length]);
+
 
   const publishMut = useMutation({
     mutationFn: () => publish({ data: { jobId, durationMin: 180, markingScheme: { correct: 4, incorrect: -1, unattempted: 0 } } }),
@@ -110,7 +138,24 @@ function JobPage() {
   if (data.isLoading || !data.data) {
     return <main className="mx-auto max-w-7xl px-6 py-10 text-sm text-muted-foreground">Loading…</main>;
   }
-  const { job, questions, report, batches } = data.data;
+  const { job, questions, report, batches, logs } = data.data;
+  const doneBatches = batches.filter((b) => b.status === "done").length;
+  const failedBatches = batches.filter((b) => b.status === "failed").length;
+  const totalBatches = batches.length;
+  const progressPct = totalBatches > 0 ? Math.round((doneBatches / totalBatches) * 100) : 0;
+
+  const pipelineStages = [
+    { key: "uploaded", label: "Uploaded" },
+    { key: "splitting", label: "Splitting" },
+    { key: "extracting", label: "Extracting" },
+    { key: "validating", label: "Validating" },
+    { key: "needs_review", label: "Review" },
+    { key: "published", label: "Published" },
+  ];
+  const stageOrder: Record<string, number> = {
+    uploaded: 0, splitting: 1, extracting: 2, validating: 3, needs_review: 4, approved: 5, published: 5, failed: -1,
+  };
+  const currentStage = stageOrder[job.status] ?? 0;
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
@@ -129,9 +174,9 @@ function JobPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={resplit}>Re-split PDF</Button>
+          <Button variant="outline" size="sm" onClick={resplit} disabled={running}>Re-split PDF</Button>
           <Button onClick={runAll} disabled={running} size="sm">
-            {running ? "Running…" : "Run extraction + validate"}
+            {running ? "Running…" : doneBatches === totalBatches && totalBatches > 0 ? "Re-run extraction" : "Run extraction + validate"}
           </Button>
           {report && (report.missing_numbers?.length ?? 0) > 0 && (
             <Button onClick={retryAndExtract} disabled={running} size="sm" variant="secondary">
@@ -148,14 +193,67 @@ function JobPage() {
         </div>
       </div>
 
+      {/* PIPELINE STAGES */}
+      <div className="mt-6 rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between gap-2">
+          {pipelineStages.map((s, idx) => {
+            const isDone = currentStage > idx;
+            const isActive = currentStage === idx;
+            const isFailed = job.status === "failed" && idx === 2;
+            return (
+              <div key={s.key} className="flex flex-1 items-center gap-2">
+                <div
+                  className={
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-mono " +
+                    (isFailed
+                      ? "border-destructive bg-destructive/10 text-destructive"
+                      : isDone
+                      ? "border-success bg-success/10 text-success"
+                      : isActive
+                      ? "border-primary bg-primary/10 text-primary animate-pulse"
+                      : "border-border text-muted-foreground")
+                  }
+                >
+                  {isDone ? "✓" : idx + 1}
+                </div>
+                <span className={"text-xs " + (isActive ? "font-semibold text-foreground" : "text-muted-foreground")}>
+                  {s.label}
+                </span>
+                {idx < pipelineStages.length - 1 && <div className="h-px flex-1 bg-border" />}
+              </div>
+            );
+          })}
+        </div>
+
+        {totalBatches > 0 && (
+          <div className="mt-5">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Batches: {doneBatches}/{totalBatches} done{failedBatches > 0 ? ` · ${failedBatches} failed` : ""}
+              </span>
+              <span className="font-mono">{progressPct}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-all"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            {stageMsg && <div className="mt-2 text-xs text-primary">{stageMsg}</div>}
+          </div>
+        )}
+      </div>
+
       <div className="mt-8 grid gap-8 lg:grid-cols-[300px_1fr]">
-        {/* SIDEBAR — validation report + batches */}
+        {/* SIDEBAR — validation report + batches + logs */}
         <aside className="space-y-6">
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Status</div>
-            <div className="mt-2 text-base font-semibold">{job.status}</div>
+            <div className="mt-2 text-base font-semibold capitalize">{job.status.replace(/_/g, " ")}</div>
             {job.last_error && (
-              <div className="mt-2 text-xs text-destructive">{job.last_error}</div>
+              <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-destructive/10 p-2 text-[10px] text-destructive">
+                {job.last_error}
+              </pre>
             )}
             <div className="mt-4 text-xs font-mono uppercase tracking-wider text-muted-foreground">Extraction score</div>
             <div className="mt-1 font-mono text-3xl font-semibold">{report?.score ?? job.extraction_score ?? "—"}</div>
@@ -175,16 +273,35 @@ function JobPage() {
           <div className="rounded-xl border border-border bg-card p-4">
             <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Batches</div>
             <ul className="mt-3 space-y-1.5 text-xs">
+              {batches.length === 0 && <li className="text-muted-foreground">No batches yet — split the PDF.</li>}
               {batches.map((b) => (
-                <li key={b.id} className="flex items-center justify-between">
+                <li key={b.id} className="flex items-center justify-between gap-2">
                   <span className="font-mono text-muted-foreground">p{b.page_from}–{b.page_to}</span>
                   <Badge variant="outline" className={
                     b.status === "done" ? "border-success/40 text-success" :
                     b.status === "failed" ? "border-destructive/40 text-destructive" :
-                    b.status === "running" ? "border-primary/40 text-primary" : ""
+                    b.status === "running" ? "border-primary/40 text-primary animate-pulse" : ""
                   }>
-                    {b.status}
+                    {b.status}{b.attempts ? ` ·${b.attempts}` : ""}
                   </Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Activity log</div>
+            <ul className="mt-3 max-h-72 space-y-2 overflow-auto text-[11px]">
+              {logs.length === 0 && <li className="text-muted-foreground">No activity yet.</li>}
+              {logs.map((l) => (
+                <li key={l.id} className="border-l-2 border-border pl-2">
+                  <div className="font-mono text-foreground">{l.action}</div>
+                  <div className="text-muted-foreground">{new Date(l.created_at).toLocaleString()}</div>
+                  {l.payload && Object.keys(l.payload as object).length > 0 && (
+                    <pre className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                      {JSON.stringify(l.payload, null, 0)}
+                    </pre>
+                  )}
                 </li>
               ))}
             </ul>
@@ -195,7 +312,11 @@ function JobPage() {
         <section>
           {questions.length === 0 ? (
             <div className="rounded-xl border border-dashed border-border bg-card p-8 text-sm text-muted-foreground">
-              No questions yet. Click <strong>Run extraction</strong> once the PDF is split.
+              {running || job.status === "extracting"
+                ? "Extraction in progress — questions will appear here as batches finish."
+                : job.status === "splitting"
+                ? "Splitting PDF into batches…"
+                : <>No questions yet. Click <strong>Run extraction + validate</strong> to start.</>}
             </div>
           ) : (
             <div className="space-y-4">
@@ -209,6 +330,8 @@ function JobPage() {
     </main>
   );
 }
+
+
 
 function ReportRow({ label, nums, tone }: { label: string; nums: number[] | null; tone: "destructive" | "warning" }) {
   const list = nums ?? [];
