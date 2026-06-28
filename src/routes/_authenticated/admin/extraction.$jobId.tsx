@@ -8,11 +8,14 @@ import {
   getExtractionJob,
   processNextBatch,
   publishExtractionJob,
+  recoverStuckExtractionJobs,
+  retryFailedStep,
   retryMissing,
   runValidation,
   splitExtractionJob,
   updateExtractionQuestion,
 } from "@/lib/extraction.functions";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -35,6 +38,8 @@ function JobPage() {
   const proc = useServerFn(processNextBatch);
   const validate = useServerFn(runValidation);
   const retry = useServerFn(retryMissing);
+  const retryFailed = useServerFn(retryFailedStep);
+  const recover = useServerFn(recoverStuckExtractionJobs);
   const publish = useServerFn(publishExtractionJob);
 
   const data = useQuery({
@@ -48,10 +53,13 @@ function JobPage() {
 
   const [running, setRunning] = useState(false);
   const [stageMsg, setStageMsg] = useState<string>("");
+  const [liveLogs, setLiveLogs] = useState<AuditLog[]>([]);
   const autoStartedRef = useRef(false);
+  const runLockRef = useRef(false);
 
   const runAll = async () => {
-    if (running) return;
+    if (runLockRef.current) return;
+    runLockRef.current = true;
     setRunning(true);
     setStageMsg("Extracting questions with Gemini…");
     try {
@@ -74,6 +82,7 @@ function JobPage() {
       toast.error((e as Error).message);
     } finally {
       setRunning(false);
+      runLockRef.current = false;
     }
   };
 
@@ -89,7 +98,8 @@ function JobPage() {
   };
 
   const retryAndExtract = async () => {
-    if (running) return;
+    if (runLockRef.current) return;
+    runLockRef.current = true;
     setRunning(true);
     setStageMsg("Re-queuing missing batches…");
     try {
@@ -110,6 +120,51 @@ function JobPage() {
       toast.error((e as Error).message);
     } finally {
       setRunning(false);
+      runLockRef.current = false;
+    }
+  };
+
+  const retryFailedStage = async () => {
+    if (runLockRef.current) return;
+    runLockRef.current = true;
+    setRunning(true);
+    try {
+      setStageMsg("Detecting failed step…");
+      const r = await retryFailed({ data: { jobId } });
+      toast.message(`Retrying ${r.stage} stage`);
+      if (r.stage === "splitting") {
+        setStageMsg("Re-splitting PDF…");
+        await split({ data: { jobId } });
+        autoStartedRef.current = true;
+        for (let i = 0; i < 200; i++) {
+          const p = await proc({ data: { jobId } });
+          qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+          if (p.done || !p.processedBatchId) break;
+        }
+        setStageMsg("Validating with Groq…");
+        await validate({ data: { jobId } });
+      } else if (r.stage === "extracting") {
+        setStageMsg(`Re-running ${r.batchIds.length} failed batch${r.batchIds.length === 1 ? "" : "es"}…`);
+        for (let i = 0; i < 200; i++) {
+          const p = await proc({ data: { jobId } });
+          qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+          if (p.done || !p.processedBatchId) break;
+        }
+        setStageMsg("Validating with Groq…");
+        await validate({ data: { jobId } });
+      } else if (r.stage === "validating") {
+        setStageMsg("Re-running validation…");
+        await validate({ data: { jobId } });
+      }
+      setStageMsg("");
+      toast.success("Failed step retried successfully");
+      qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+    } catch (e) {
+      setStageMsg("");
+      toast.error((e as Error).message);
+    } finally {
+      setRunning(false);
+      runLockRef.current = false;
     }
   };
 
@@ -125,6 +180,52 @@ function JobPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.data?.job.status, data.data?.batches.length]);
 
+  useEffect(() => {
+    setLiveLogs((data.data?.logs ?? []) as AuditLog[]);
+  }, [data.data?.logs]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`extraction-job-${jobId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "extraction_audit_log", filter: `job_id=eq.${jobId}` },
+        (payload) => {
+          const next = payload.new as AuditLog;
+          setLiveLogs((prev) => [next, ...prev.filter((l) => l.id !== next.id)].slice(0, 100));
+          if (isErrorLog(next)) toast.error(`${next.action}: ${extractLogError(next)}`);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "extraction_jobs", filter: `id=eq.${jobId}` },
+        () => qc.invalidateQueries({ queryKey: ["extraction-job", jobId] }),
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "extraction_batches", filter: `job_id=eq.${jobId}` },
+        () => qc.invalidateQueries({ queryKey: ["extraction-job", jobId] }),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [jobId, qc]);
+
+  useEffect(() => {
+    const tick = async () => {
+      try {
+        const r = await recover({ data: { timeoutMinutes: 10 } });
+        if (r.recovered.length > 0) qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+      } catch {
+        // Recovery is best-effort; the regular query will surface real job errors.
+      }
+    };
+    void tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, [jobId, qc, recover]);
+
 
   const publishMut = useMutation({
     mutationFn: () => publish({ data: { jobId, durationMin: 180, markingScheme: { correct: 4, incorrect: -1, unattempted: 0 } } }),
@@ -139,6 +240,7 @@ function JobPage() {
     return <main className="mx-auto max-w-7xl px-6 py-10 text-sm text-muted-foreground">Loading…</main>;
   }
   const { job, questions, report, batches, logs } = data.data;
+  const displayLogs = liveLogs.length > 0 ? liveLogs : (logs as AuditLog[]);
   const doneBatches = batches.filter((b) => b.status === "done").length;
   const failedBatches = batches.filter((b) => b.status === "failed").length;
   const totalBatches = batches.length;
@@ -156,6 +258,7 @@ function JobPage() {
     uploaded: 0, splitting: 1, extracting: 2, validating: 3, needs_review: 4, approved: 5, published: 5, failed: -1,
   };
   const currentStage = stageOrder[job.status] ?? 0;
+  const failedStageIndex = inferFailedStage(job.status, displayLogs);
 
   return (
     <main className="mx-auto max-w-7xl px-6 py-10">
@@ -175,6 +278,9 @@ function JobPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={resplit} disabled={running}>Re-split PDF</Button>
+          <Button variant="outline" size="sm" onClick={retryFailedStage} disabled={running || job.status !== "failed"}>
+            Retry failed step
+          </Button>
           <Button onClick={runAll} disabled={running} size="sm">
             {running ? "Running…" : doneBatches === totalBatches && totalBatches > 0 ? "Re-run extraction" : "Run extraction + validate"}
           </Button>
@@ -199,7 +305,7 @@ function JobPage() {
           {pipelineStages.map((s, idx) => {
             const isDone = currentStage > idx;
             const isActive = currentStage === idx;
-            const isFailed = job.status === "failed" && idx === 2;
+            const isFailed = job.status === "failed" && idx === failedStageIndex;
             return (
               <div key={s.key} className="flex flex-1 items-center gap-2">
                 <div
@@ -214,9 +320,9 @@ function JobPage() {
                       : "border-border text-muted-foreground")
                   }
                 >
-                  {isDone ? "✓" : idx + 1}
+                  {isFailed ? "!" : isDone ? "✓" : idx + 1}
                 </div>
-                <span className={"text-xs " + (isActive ? "font-semibold text-foreground" : "text-muted-foreground")}>
+                <span className={"text-xs " + (isFailed || isActive ? "font-semibold text-foreground" : "text-muted-foreground")}>
                   {s.label}
                 </span>
                 {idx < pipelineStages.length - 1 && <div className="h-px flex-1 bg-border" />}
@@ -290,20 +396,26 @@ function JobPage() {
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4">
-            <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Activity log</div>
-            <ul className="mt-3 max-h-72 space-y-2 overflow-auto text-[11px]">
-              {logs.length === 0 && <li className="text-muted-foreground">No activity yet.</li>}
-              {logs.map((l) => (
-                <li key={l.id} className="border-l-2 border-border pl-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Live activity log</div>
+              <Badge variant="outline" className="border-success/40 text-success">streaming</Badge>
+            </div>
+            <ul className="mt-3 max-h-96 space-y-2 overflow-auto text-[11px]">
+              {displayLogs.length === 0 && <li className="text-muted-foreground">No activity yet.</li>}
+              {displayLogs.map((l) => {
+                const error = isErrorLog(l);
+                return (
+                <li key={l.id} className={"border-l-2 pl-2 " + (error ? "border-destructive bg-destructive/5 py-1 text-destructive" : "border-border")}>
                   <div className="font-mono text-foreground">{l.action}</div>
                   <div className="text-muted-foreground">{new Date(l.created_at).toLocaleString()}</div>
-                  {l.payload && Object.keys(l.payload as object).length > 0 && (
-                    <pre className="mt-0.5 whitespace-pre-wrap text-muted-foreground">
+                  {hasLogPayload(l.payload) && (
+                    <pre className={"mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap " + (error ? "text-destructive" : "text-muted-foreground")}>
                       {JSON.stringify(l.payload, null, 0)}
                     </pre>
                   )}
                 </li>
-              ))}
+              );
+              })}
             </ul>
           </div>
         </aside>
@@ -329,6 +441,39 @@ function JobPage() {
       </div>
     </main>
   );
+}
+
+type AuditLog = {
+  id: string;
+  actor: string | null;
+  action: string;
+  payload: unknown;
+  created_at: string;
+};
+
+function isErrorLog(log: AuditLog) {
+  return /failed|error/i.test(log.action) || /error/i.test(JSON.stringify(log.payload ?? {}));
+}
+
+function extractLogError(log: AuditLog) {
+  const payload = log.payload as { error?: string; reason?: string } | null;
+  return (payload?.error ?? payload?.reason ?? "See activity log").slice(0, 160);
+}
+
+function hasLogPayload(payload: unknown): payload is Record<string, unknown> | unknown[] {
+  if (payload == null) return false;
+  if (Array.isArray(payload)) return payload.length > 0;
+  return typeof payload === "object" && Object.keys(payload).length > 0;
+}
+
+function inferFailedStage(status: string, logs: AuditLog[]) {
+  if (status !== "failed") return -1;
+  const lastFailure = logs.find((l) => /failed|error/i.test(l.action));
+  const action = lastFailure?.action ?? "extract.failed";
+  if (action.startsWith("split") || action.includes("splitting")) return 1;
+  if (action.startsWith("validate") || action.includes("validating")) return 3;
+  if (action.startsWith("publish")) return 5;
+  return 2;
 }
 
 

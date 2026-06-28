@@ -4,40 +4,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import {
+  assertAdmin,
+  auditExtraction,
+  errorMessage,
+  errorStack,
+  logExtractionError,
+  recoverStuckJobs,
+} from "./extraction-utils.server";
 
 const PDF_BUCKET = "pdf-uploads";
-
-function errorStack(error: unknown) {
-  if (error instanceof Error) return error.stack ?? error.message;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function logExtractionError(stage: string, jobId: string, error: unknown) {
-  console.error(`[pdf-extraction:${stage}] job=${jobId}\n${errorStack(error)}`);
-}
-
-// ---------- admin guard ----------
-async function assertAdmin(ctx: {
-  supabase: import("@supabase/supabase-js").SupabaseClient<import("@/integrations/supabase/types").Database>;
-  userId: string;
-}) {
-  const { data, error } = await ctx.supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", ctx.userId)
-    .eq("role", "admin")
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("Forbidden: admin role required");
-}
 
 // =========================================================================
 // LIST + GET
@@ -47,6 +23,7 @@ export const listExtractionJobs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context);
+    await recoverStuckJobs(context, { timeoutMinutes: 10 });
     const { data, error } = await context.supabase
       .from("extraction_jobs")
       .select("*")
@@ -82,10 +59,10 @@ export const getExtractionJob = createServerFn({ method: "GET" })
         .order("page_from", { ascending: true }),
       context.supabase
         .from("extraction_audit_log")
-        .select("id, action, payload, created_at")
+        .select("id, actor, action, payload, created_at")
         .eq("job_id", data.jobId)
         .order("created_at", { ascending: false })
-        .limit(50),
+        .limit(100),
     ]);
     if (!job) throw new Error("Job not found");
     return { job, questions: questions ?? [], report: report ?? null, batches: batches ?? [], logs: logs ?? [] };
@@ -125,11 +102,9 @@ export const createExtractionJob = createServerFn({ method: "POST" })
       .single();
     if (error || !row) throw new Error(error?.message ?? "Failed to create job");
 
-    await context.supabase.from("extraction_audit_log").insert({
-      job_id: row.id,
-      actor: context.userId,
-      action: "job.created",
-      payload: { filename: data.originalFilename },
+    await auditExtraction(context.supabase, row.id, context.userId, "job.created", {
+      filename: data.originalFilename,
+      title: data.title,
     });
     return { jobId: row.id as string };
   });
@@ -150,6 +125,7 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
       .from("extraction_jobs")
       .update({ status: "splitting", last_error: null })
       .eq("id", data.jobId);
+    await auditExtraction(context.supabase, data.jobId, context.userId, "split.started");
 
     const { data: job } = await context.supabase
       .from("extraction_jobs")
@@ -174,6 +150,9 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
         .from("extraction_jobs")
         .update({ status: "failed", last_error: stack.slice(0, 4000) })
         .eq("id", data.jobId);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "split.failed", {
+        error: stack.slice(0, 4000),
+      });
       throw err;
     }
 
@@ -209,11 +188,9 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
       .from("extraction_jobs")
       .update({ status: "extracting", page_count: pageCount })
       .eq("id", data.jobId);
-    await context.supabase.from("extraction_audit_log").insert({
-      job_id: data.jobId,
-      actor: context.userId,
-      action: "job.split",
-      payload: { pageCount, batches: batches.length },
+    await auditExtraction(context.supabase, data.jobId, context.userId, "split.completed", {
+      pageCount,
+      batches: batches.length,
     });
     return { pageCount, batchCount: batches.length };
   });
@@ -253,13 +230,25 @@ export const processNextBatch = createServerFn({ method: "POST" })
     const batch = batchRows?.[0];
 
     if (!batch) {
-      // Nothing left → flip status if still extracting
-      const { data: remaining } = await context.supabase
+      const { count: pendingCount } = await context.supabase
         .from("extraction_batches")
         .select("id", { count: "exact", head: true })
         .eq("job_id", data.jobId)
         .eq("status", "pending");
-      const pendingCount = (remaining as unknown as { count?: number } | null)?.count ?? 0;
+      const { count: failedCount } = await context.supabase
+        .from("extraction_batches")
+        .select("id", { count: "exact", head: true })
+        .eq("job_id", data.jobId)
+        .eq("status", "failed");
+      if ((failedCount ?? 0) > 0) {
+        const reason = `${failedCount} extraction batch${failedCount === 1 ? "" : "es"} failed.`;
+        await context.supabase
+          .from("extraction_jobs")
+          .update({ status: "failed", last_error: reason })
+          .eq("id", data.jobId);
+        await auditExtraction(context.supabase, data.jobId, context.userId, "extract.failed", { reason });
+        throw new Error(`${reason} Click “Retry failed step” to re-run only failed batches.`);
+      }
       return { done: true, processedBatchId: null, pendingCount };
     }
 
@@ -267,6 +256,11 @@ export const processNextBatch = createServerFn({ method: "POST" })
       .from("extraction_batches")
       .update({ status: "running", attempts: (batch.attempts ?? 0) + 1, last_error: null })
       .eq("id", batch.id);
+    await auditExtraction(context.supabase, data.jobId, context.userId, "extract.batch_started", {
+      batchId: batch.id,
+      attempt: (batch.attempts ?? 0) + 1,
+      pages: `${batch.page_from}-${batch.page_to}`,
+    });
 
     try {
       const path = `jobs/${data.jobId}/batches/batch-${(Math.floor((batch.page_from - 1) / 2))
@@ -316,6 +310,12 @@ export const processNextBatch = createServerFn({ method: "POST" })
         .select("id", { count: "exact", head: true })
         .eq("job_id", data.jobId)
         .eq("status", "pending");
+      await auditExtraction(context.supabase, data.jobId, context.userId, "extract.batch_completed", {
+        batchId: batch.id,
+        pages: `${batch.page_from}-${batch.page_to}`,
+        extractedCount: questions.length,
+        pendingCount: pendingCount ?? 0,
+      });
 
       return {
         done: false,
@@ -334,8 +334,13 @@ export const processNextBatch = createServerFn({ method: "POST" })
         .eq("id", batch.id);
       await context.supabase
         .from("extraction_jobs")
-        .update({ last_error: stack.slice(0, 4000) || msg })
+        .update({ status: "failed", last_error: stack.slice(0, 4000) || msg })
         .eq("id", data.jobId);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "extract.batch_failed", {
+        batchId: batch.id,
+        pages: `${batch.page_from}-${batch.page_to}`,
+        error: stack.slice(0, 4000),
+      });
       throw err;
     }
   });
@@ -357,6 +362,7 @@ export const runValidation = createServerFn({ method: "POST" })
       .from("extraction_jobs")
       .update({ status: "validating", last_error: null })
       .eq("id", data.jobId);
+    await auditExtraction(context.supabase, data.jobId, context.userId, "validate.started");
 
     const { data: job } = await context.supabase
       .from("extraction_jobs")
@@ -380,6 +386,15 @@ export const runValidation = createServerFn({ method: "POST" })
       hasImage: !!q.has_image,
       imageUrl: "",
     }));
+    if (mapped.length === 0) {
+      const reason = "No extracted questions found to validate.";
+      await context.supabase
+        .from("extraction_jobs")
+        .update({ status: "failed", last_error: reason })
+        .eq("id", data.jobId);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "validate.failed", { error: reason });
+      throw new Error(reason);
+    }
     let report: Awaited<ReturnType<typeof validateWithGroq>>["report"];
     let raw: Awaited<ReturnType<typeof validateWithGroq>>["raw"];
     try {
@@ -395,6 +410,9 @@ export const runValidation = createServerFn({ method: "POST" })
         .from("extraction_jobs")
         .update({ status: "failed", last_error: stack.slice(0, 4000) })
         .eq("id", data.jobId);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "validate.failed", {
+        error: stack.slice(0, 4000),
+      });
       throw err;
     }
 
@@ -416,13 +434,83 @@ export const runValidation = createServerFn({ method: "POST" })
       .update({ status: "needs_review", extraction_score: report.score })
       .eq("id", data.jobId);
 
-    await context.supabase.from("extraction_audit_log").insert({
-      job_id: data.jobId,
-      actor: context.userId,
-      action: "job.validated",
-      payload: { score: report.score, missing: report.missingNumbers.length },
+    await auditExtraction(context.supabase, data.jobId, context.userId, "validate.completed", {
+      score: report.score,
+      missing: report.missingNumbers.length,
+      duplicates: report.duplicates.length,
     });
     return report;
+  });
+
+export const retryFailedStep = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ jobId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: job } = await context.supabase
+      .from("extraction_jobs")
+      .select("id, status, page_count, last_error")
+      .eq("id", data.jobId)
+      .single();
+    if (!job) throw new Error("Job not found");
+
+    const { data: batches } = await context.supabase
+      .from("extraction_batches")
+      .select("id, status")
+      .eq("job_id", data.jobId);
+    const batchRows = batches ?? [];
+    const retryableBatchIds = batchRows
+      .filter((b) => b.status === "failed" || b.status === "running")
+      .map((b) => b.id);
+
+    if (job.status === "splitting" || (job.status === "failed" && batchRows.length === 0)) {
+      await context.supabase
+        .from("extraction_jobs")
+        .update({ status: "uploaded", last_error: null })
+        .eq("id", data.jobId);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "retry.splitting", { attempt: Date.now() });
+      return { stage: "splitting" as const, batchIds: [] as string[] };
+    }
+
+    if (retryableBatchIds.length > 0 || job.status === "extracting") {
+      const ids = retryableBatchIds.length > 0 ? retryableBatchIds : batchRows.filter((b) => b.status !== "done").map((b) => b.id);
+      if (ids.length === 0) throw new Error("No extraction batches need retry");
+      await context.supabase
+        .from("extraction_batches")
+        .update({ status: "pending", last_error: null })
+        .in("id", ids);
+      await context.supabase
+        .from("extraction_jobs")
+        .update({ status: "extracting", last_error: null })
+        .eq("id", data.jobId);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "retry.extracting", {
+        batchIds: ids,
+        attempt: Date.now(),
+      });
+      return { stage: "extracting" as const, batchIds: ids };
+    }
+
+    if (job.status === "validating" || job.status === "failed") {
+      const doneCount = batchRows.filter((b) => b.status === "done").length;
+      if (doneCount > 0 && doneCount === batchRows.length) {
+        await context.supabase
+          .from("extraction_jobs")
+          .update({ status: "validating", last_error: null })
+          .eq("id", data.jobId);
+        await auditExtraction(context.supabase, data.jobId, context.userId, "retry.validating", { attempt: Date.now() });
+        return { stage: "validating" as const, batchIds: [] as string[] };
+      }
+    }
+
+    throw new Error("No failed pipeline step was detected for this job.");
+  });
+
+export const recoverStuckExtractionJobs = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ timeoutMinutes: z.number().int().min(2).max(120).default(10) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    return recoverStuckJobs(context, { timeoutMinutes: data.timeoutMinutes });
   });
 
 // =========================================================================
@@ -535,6 +623,7 @@ export const publishExtractionJob = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
+    await auditExtraction(context.supabase, data.jobId, context.userId, "publish.started");
     const { data: job } = await context.supabase
       .from("extraction_jobs")
       .select("id, title, exam")
@@ -564,7 +653,12 @@ export const publishExtractionJob = createServerFn({ method: "POST" })
       })
       .select("id")
       .single();
-    if (testErr || !test) throw new Error(testErr?.message ?? "Test insert failed");
+    if (testErr || !test) {
+      await auditExtraction(context.supabase, data.jobId, context.userId, "publish.failed", {
+        error: testErr?.message ?? "Test insert failed",
+      });
+      throw new Error(testErr?.message ?? "Test insert failed");
+    }
 
     // Insert questions one shot, capture ids
     const questionRows = extracted.map((q) => ({
@@ -580,7 +674,12 @@ export const publishExtractionJob = createServerFn({ method: "POST" })
       .from("questions")
       .insert(questionRows)
       .select("id");
-    if (qsErr || !insertedQs) throw new Error(qsErr?.message ?? "Question insert failed");
+    if (qsErr || !insertedQs) {
+      await auditExtraction(context.supabase, data.jobId, context.userId, "publish.failed", {
+        error: qsErr?.message ?? "Question insert failed",
+      });
+      throw new Error(qsErr?.message ?? "Question insert failed");
+    }
 
     const testQRows = insertedQs.map((row, idx) => ({
       test_id: test.id,
@@ -589,17 +688,18 @@ export const publishExtractionJob = createServerFn({ method: "POST" })
       section: extracted[idx].subject,
     }));
     const { error: tqErr } = await context.supabase.from("test_questions").insert(testQRows);
-    if (tqErr) throw new Error(tqErr.message);
+    if (tqErr) {
+      await auditExtraction(context.supabase, data.jobId, context.userId, "publish.failed", { error: tqErr.message });
+      throw new Error(tqErr.message);
+    }
 
     await context.supabase
       .from("extraction_jobs")
       .update({ status: "published" })
       .eq("id", data.jobId);
-    await context.supabase.from("extraction_audit_log").insert({
-      job_id: data.jobId,
-      actor: context.userId,
-      action: "job.published",
-      payload: { testId: test.id, questionCount: insertedQs.length },
+    await auditExtraction(context.supabase, data.jobId, context.userId, "publish.completed", {
+      testId: test.id,
+      questionCount: insertedQs.length,
     });
     return { testId: test.id, questionCount: insertedQs.length };
   });
