@@ -136,7 +136,13 @@ function JobPage() {
         setStageMsg("Re-splitting PDF…");
         await split({ data: { jobId } });
         autoStartedRef.current = true;
-        await runAll();
+        for (let i = 0; i < 200; i++) {
+          const p = await proc({ data: { jobId } });
+          qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+          if (p.done || !p.processedBatchId) break;
+        }
+        setStageMsg("Validating with Groq…");
+        await validate({ data: { jobId } });
         return;
       }
       if (r.stage === "extracting") {
