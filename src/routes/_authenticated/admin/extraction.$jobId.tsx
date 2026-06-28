@@ -404,7 +404,7 @@ function JobPage() {
                 <li key={l.id} className={"border-l-2 pl-2 " + (error ? "border-destructive bg-destructive/5 py-1 text-destructive" : "border-border")}>
                   <div className="font-mono text-foreground">{l.action}</div>
                   <div className="text-muted-foreground">{new Date(l.created_at).toLocaleString()}</div>
-                  {l.payload && Object.keys(l.payload as object).length > 0 && (
+                  {hasLogPayload(l.payload) && (
                     <pre className={"mt-0.5 max-h-40 overflow-auto whitespace-pre-wrap " + (error ? "text-destructive" : "text-muted-foreground")}>
                       {JSON.stringify(l.payload, null, 0)}
                     </pre>
