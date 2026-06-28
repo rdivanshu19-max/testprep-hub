@@ -143,9 +143,7 @@ function JobPage() {
         }
         setStageMsg("Validating with Groq…");
         await validate({ data: { jobId } });
-        return;
-      }
-      if (r.stage === "extracting") {
+      } else if (r.stage === "extracting") {
         setStageMsg(`Re-running ${r.batchIds.length} failed batch${r.batchIds.length === 1 ? "" : "es"}…`);
         for (let i = 0; i < 200; i++) {
           const p = await proc({ data: { jobId } });
