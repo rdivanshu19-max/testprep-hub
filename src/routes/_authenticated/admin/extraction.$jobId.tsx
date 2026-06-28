@@ -456,6 +456,12 @@ function extractLogError(log: AuditLog) {
   return (payload?.error ?? payload?.reason ?? "See activity log").slice(0, 160);
 }
 
+function hasLogPayload(payload: unknown): payload is Record<string, unknown> | unknown[] {
+  if (payload == null) return false;
+  if (Array.isArray(payload)) return payload.length > 0;
+  return typeof payload === "object" && Object.keys(payload).length > 0;
+}
+
 function inferFailedStage(status: string, logs: AuditLog[]) {
   if (status !== "failed") return -1;
   const lastFailure = logs.find((l) => /failed|error/i.test(l.action));
