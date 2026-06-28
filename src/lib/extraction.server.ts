@@ -42,6 +42,46 @@ export async function splitPdfIntoBatches(pdfBytes: Uint8Array): Promise<{
   return { pageCount, batches };
 }
 
+export async function createSmokeTestPdf(): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = (await import("pdf-lib/dist/pdf-lib.esm.js")) as typeof import("pdf-lib");
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([595, 842]);
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const lines = [
+    { text: "RankersTestHub PDF Pipeline Smoke Test", size: 18, bold: true },
+    { text: "Question Paper - JEE Main", size: 12 },
+    { text: "", size: 10 },
+    { text: "1. Chemistry: What is the value of 2 + 2?", size: 12 },
+    { text: "A. 2", size: 11 },
+    { text: "B. 3", size: 11 },
+    { text: "C. 4", size: 11 },
+    { text: "D. 5", size: 11 },
+    { text: "Answer: C", size: 11 },
+    { text: "", size: 10 },
+    { text: "2. Physics: If speed = distance / time, what is speed for 10 m in 2 s?", size: 12 },
+    { text: "A. 2 m/s", size: 11 },
+    { text: "B. 5 m/s", size: 11 },
+    { text: "C. 10 m/s", size: 11 },
+    { text: "D. 20 m/s", size: 11 },
+    { text: "Answer: B", size: 11 },
+  ];
+  let y = 790;
+  for (const line of lines) {
+    if (line.text) {
+      page.drawText(line.text, {
+        x: 50,
+        y,
+        size: line.size,
+        font: line.bold ? bold : font,
+        color: line.bold ? rgb(0.05, 0.1, 0.2) : rgb(0, 0, 0),
+      });
+    }
+    y -= line.size + 8;
+  }
+  return pdf.save();
+}
+
 // ---------------------------------------------------------------------------
 // BASE64 — safe for large binaries (chunked to avoid call-stack overflow)
 // ---------------------------------------------------------------------------
