@@ -22,6 +22,7 @@ import { Route as AuthenticatedResultsAttemptIdRouteImport } from './routes/_aut
 import { Route as AuthenticatedAdminTestsRouteImport } from './routes/_authenticated/admin/tests'
 import { Route as AuthenticatedAdminTaxonomyRouteImport } from './routes/_authenticated/admin/taxonomy'
 import { Route as AuthenticatedAdminExtractionRouteImport } from './routes/_authenticated/admin/extraction'
+import { Route as AuthenticatedAdminExtractionIndexRouteImport } from './routes/_authenticated/admin/extraction.index'
 import { Route as AuthenticatedAdminExtractionJobIdRouteImport } from './routes/_authenticated/admin/extraction.$jobId'
 
 const AuthRoute = AuthRouteImport.update({
@@ -92,6 +93,12 @@ const AuthenticatedAdminExtractionRoute =
     path: '/extraction',
     getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
+const AuthenticatedAdminExtractionIndexRoute =
+  AuthenticatedAdminExtractionIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAdminExtractionRoute,
+  } as any)
 const AuthenticatedAdminExtractionJobIdRoute =
   AuthenticatedAdminExtractionJobIdRouteImport.update({
     id: '/$jobId',
@@ -113,12 +120,12 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/tests/': typeof AuthenticatedTestsIndexRoute
   '/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
+  '/admin/extraction/': typeof AuthenticatedAdminExtractionIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
-  '/admin/extraction': typeof AuthenticatedAdminExtractionRouteWithChildren
   '/admin/taxonomy': typeof AuthenticatedAdminTaxonomyRoute
   '/admin/tests': typeof AuthenticatedAdminTestsRoute
   '/results/$attemptId': typeof AuthenticatedResultsAttemptIdRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/tests': typeof AuthenticatedTestsIndexRoute
   '/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
+  '/admin/extraction': typeof AuthenticatedAdminExtractionIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -143,6 +151,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/tests/': typeof AuthenticatedTestsIndexRoute
   '/_authenticated/admin/extraction/$jobId': typeof AuthenticatedAdminExtractionJobIdRoute
+  '/_authenticated/admin/extraction/': typeof AuthenticatedAdminExtractionIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -160,12 +169,12 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/tests/'
     | '/admin/extraction/$jobId'
+    | '/admin/extraction/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/dashboard'
-    | '/admin/extraction'
     | '/admin/taxonomy'
     | '/admin/tests'
     | '/results/$attemptId'
@@ -173,6 +182,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/tests'
     | '/admin/extraction/$jobId'
+    | '/admin/extraction'
   id:
     | '__root__'
     | '/'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/'
     | '/_authenticated/tests/'
     | '/_authenticated/admin/extraction/$jobId'
+    | '/_authenticated/admin/extraction/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -290,6 +301,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminExtractionRouteImport
       parentRoute: typeof AuthenticatedAdminRouteRoute
     }
+    '/_authenticated/admin/extraction/': {
+      id: '/_authenticated/admin/extraction/'
+      path: '/'
+      fullPath: '/admin/extraction/'
+      preLoaderRoute: typeof AuthenticatedAdminExtractionIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminExtractionRoute
+    }
     '/_authenticated/admin/extraction/$jobId': {
       id: '/_authenticated/admin/extraction/$jobId'
       path: '/$jobId'
@@ -302,12 +320,15 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedAdminExtractionRouteChildren {
   AuthenticatedAdminExtractionJobIdRoute: typeof AuthenticatedAdminExtractionJobIdRoute
+  AuthenticatedAdminExtractionIndexRoute: typeof AuthenticatedAdminExtractionIndexRoute
 }
 
 const AuthenticatedAdminExtractionRouteChildren: AuthenticatedAdminExtractionRouteChildren =
   {
     AuthenticatedAdminExtractionJobIdRoute:
       AuthenticatedAdminExtractionJobIdRoute,
+    AuthenticatedAdminExtractionIndexRoute:
+      AuthenticatedAdminExtractionIndexRoute,
   }
 
 const AuthenticatedAdminExtractionRouteWithChildren =
