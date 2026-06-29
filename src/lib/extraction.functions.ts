@@ -547,10 +547,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
         const out: SmokeDetails = {};
         for (const [key, value] of Object.entries(result)) {
           if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value == null) out[key] = value;
-          else if (Array.isArray(value)) {
-            const serializable = value.filter((v): v is string | number => typeof v === "string" || typeof v === "number");
-            out[key] = serializable.slice(0, 25);
-          }
+          else if (Array.isArray(value)) out[key] = value.map((v) => String(v)).slice(0, 25);
         }
         return out;
       }
