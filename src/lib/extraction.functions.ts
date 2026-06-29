@@ -530,21 +530,43 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
     if (!geminiKey) throw new Error("Missing GEMINI_API_KEY");
     if (!groqKey) throw new Error("Missing GROQ_API_KEY");
 
-    type SmokeStep = { name: string; ok: boolean; startedAt: string; endedAt?: string; details?: unknown; error?: string };
+    type SmokeDetails = { [key: string]: string | number | boolean | null | string[] | number[] };
+    type SmokeStep = { name: string; ok: boolean; startedAt: string; endedAt?: string; details?: SmokeDetails; error?: string };
     const steps: SmokeStep[] = [];
     let jobId: string | null = null;
     let testId: string | null = null;
     let questionCount = 0;
+
+    const smokeDetails = (name: string, result: unknown): SmokeDetails => {
+      if (result instanceof Uint8Array) return { bytes: result.byteLength };
+      if (name === "split" && result && typeof result === "object" && "pageCount" in result && "batches" in result) {
+        const r = result as { pageCount: number; batches: unknown[] };
+        return { pageCount: r.pageCount, batchCount: r.batches.length };
+      }
+      if (result && typeof result === "object") {
+        const out: SmokeDetails = {};
+        for (const [key, value] of Object.entries(result)) {
+          if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value == null) out[key] = value;
+          else if (Array.isArray(value)) {
+            const serializable = value.filter((v): v is string | number => typeof v === "string" || typeof v === "number");
+            out[key] = serializable.slice(0, 25);
+          }
+        }
+        return out;
+      }
+      return { value: String(result) };
+    };
 
     const runStep = async <T,>(name: string, fn: () => Promise<T>) => {
       const step: SmokeStep = { name, ok: false, startedAt: new Date().toISOString() };
       steps.push(step);
       try {
         const result = await fn();
+        const details = smokeDetails(name, result);
         step.ok = true;
         step.endedAt = new Date().toISOString();
-        step.details = result;
-        if (jobId) await auditExtraction(supabaseAdmin, jobId, context.userId, `smoke.${name}.passed`, result as never);
+        step.details = details;
+        if (jobId) await auditExtraction(supabaseAdmin, jobId, context.userId, `smoke.${name}.passed`, details);
         return result;
       } catch (err) {
         const stack = errorStack(err).slice(0, 4000);
