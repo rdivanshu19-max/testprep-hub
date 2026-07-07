@@ -12,6 +12,7 @@ import {
   retryFailedStep,
   retryMissing,
   runValidation,
+  runExtractionSmokeTest,
   splitExtractionJob,
   updateExtractionQuestion,
 } from "@/lib/extraction.functions";
@@ -40,6 +41,7 @@ function JobPage() {
   const retry = useServerFn(retryMissing);
   const retryFailed = useServerFn(retryFailedStep);
   const recover = useServerFn(recoverStuckExtractionJobs);
+  const smokeTest = useServerFn(runExtractionSmokeTest);
   const publish = useServerFn(publishExtractionJob);
 
   const data = useQuery({
@@ -78,6 +80,7 @@ function JobPage() {
       toast.success("Extraction + validation complete");
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
     } catch (e) {
+      autoStartedRef.current = false;
       setStageMsg("");
       toast.error((e as Error).message);
     } finally {
@@ -163,6 +166,49 @@ function JobPage() {
       setStageMsg("");
       toast.error((e as Error).message);
     } finally {
+      setRunning(false);
+      runLockRef.current = false;
+    }
+  };
+
+  const retryBatch = async (batchId: string) => {
+    if (runLockRef.current) return;
+    runLockRef.current = true;
+    setRunning(true);
+    setStageMsg("Retrying failed batch…");
+    try {
+      const p = await proc({ data: { jobId, retryBatchId: batchId } });
+      qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+      toast.success(`Batch retried${p.extractedCount ? ` — ${p.extractedCount} questions` : ""}`);
+      setStageMsg("");
+    } catch (e) {
+      setStageMsg("");
+      toast.error((e as Error).message);
+    } finally {
+      setRunning(false);
+      runLockRef.current = false;
+    }
+  };
+
+  const runSmoke = async () => {
+    if (runLockRef.current) return;
+    runLockRef.current = true;
+    setRunning(true);
+    setStageMsg("Running full pipeline smoke test…");
+    try {
+      const r = await smokeTest();
+      if (r.pass) {
+        toast.success(`Smoke test passed — ${r.questionCount} questions published`);
+        if (r.jobId) navigate({ to: "/admin/extraction/$jobId", params: { jobId: r.jobId } });
+      } else {
+        toast.error(`Smoke test failed: ${r.error ?? "See activity log"}`);
+      }
+      qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
+      qc.invalidateQueries({ queryKey: ["extraction-jobs"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setStageMsg("");
       setRunning(false);
       runLockRef.current = false;
     }
@@ -281,6 +327,7 @@ function JobPage() {
           <Button variant="outline" size="sm" onClick={retryFailedStage} disabled={running || job.status !== "failed"}>
             Retry failed step
           </Button>
+          <Button variant="outline" size="sm" onClick={runSmoke} disabled={running}>Smoke test</Button>
           <Button onClick={runAll} disabled={running} size="sm">
             {running ? "Running…" : doneBatches === totalBatches && totalBatches > 0 ? "Re-run extraction" : "Run extraction + validate"}
           </Button>
@@ -383,13 +430,20 @@ function JobPage() {
               {batches.map((b) => (
                 <li key={b.id} className="flex items-center justify-between gap-2">
                   <span className="font-mono text-muted-foreground">p{b.page_from}–{b.page_to}</span>
-                  <Badge variant="outline" className={
-                    b.status === "done" ? "border-success/40 text-success" :
-                    b.status === "failed" ? "border-destructive/40 text-destructive" :
-                    b.status === "running" ? "border-primary/40 text-primary animate-pulse" : ""
-                  }>
-                    {b.status}{b.attempts ? ` ·${b.attempts}` : ""}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className={
+                      b.status === "done" ? "border-success/40 text-success" :
+                      b.status === "failed" ? "border-destructive/40 text-destructive" :
+                      b.status === "running" ? "border-primary/40 text-primary animate-pulse" : ""
+                    }>
+                      {b.status}{b.attempts ? ` ·${b.attempts}` : ""}
+                    </Badge>
+                    {b.status === "failed" && (
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-[10px]" disabled={running} onClick={() => retryBatch(b.id)}>
+                        Retry
+                      </Button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

@@ -174,8 +174,9 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
         job_id: data.jobId,
         page_from: b.pageFrom,
         page_to: b.pageTo,
+        batch_storage_path: `jobs/${data.jobId}/batches/batch-${b.batchIndex.toString().padStart(3, "0")}.pdf`,
         status: "pending",
-      })),
+      })) as never,
     );
     await context.supabase.from("extraction_pages").insert(
       Array.from({ length: pageCount }, (_, i) => ({
@@ -206,9 +207,29 @@ export const processNextBatch = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const lovableKey = process.env.LOVABLE_API_KEY;
+    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const staleCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
+    const { data: staleRunning } = await context.supabase
+      .from("extraction_batches")
+      .select("id")
+      .eq("job_id", data.jobId)
+      .eq("status", "running")
+      .lt("updated_at", staleCutoff);
+    if ((staleRunning ?? []).length > 0) {
+      const ids = (staleRunning ?? []).map((b) => b.id);
+      await context.supabase
+        .from("extraction_batches")
+        .update({ status: "pending", last_error: null })
+        .in("id", ids);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "extract.stale_batches_reset", {
+        batchIds: ids,
+        timeoutMinutes: 5,
+      });
+    }
 
     // Find next pending batch (or specific retry batch)
     let batchQuery = context.supabase
@@ -222,12 +243,17 @@ export const processNextBatch = createServerFn({ method: "POST" })
         .from("extraction_batches")
         .select("*")
         .eq("id", data.retryBatchId)
+        .eq("job_id", data.jobId)
         .limit(1);
     } else {
       batchQuery = batchQuery.eq("status", "pending");
     }
     const { data: batchRows } = await batchQuery;
     const batch = batchRows?.[0];
+
+    if (batch && data.retryBatchId && batch.status === "done") {
+      throw new Error("This batch is already complete. Only pending, running, or failed batches can be retried.");
+    }
 
     if (!batch) {
       const { count: pendingCount } = await context.supabase
@@ -263,15 +289,16 @@ export const processNextBatch = createServerFn({ method: "POST" })
     });
 
     try {
-      const path = `jobs/${data.jobId}/batches/batch-${(Math.floor((batch.page_from - 1) / 2))
+      const typedBatch = batch as typeof batch & { batch_storage_path?: string | null };
+      const path = typedBatch.batch_storage_path ?? `jobs/${data.jobId}/batches/batch-${(Math.floor((batch.page_from - 1) / 2))
         .toString()
         .padStart(3, "0")}.pdf`;
       const dl = await supabaseAdmin.storage.from("question-images").download(path);
       if (dl.error || !dl.data) throw new Error(`Batch download: ${dl.error?.message}`);
       const pdfBytes = new Uint8Array(await dl.data.arrayBuffer());
 
-      const { extractQuestionsWithGemini } = await import("./extraction.server");
-      const { questions, raw } = await extractQuestionsWithGemini(apiKey, pdfBytes);
+      const { extractQuestions } = await import("./extraction.server");
+      const { questions, raw } = await extractQuestions({ geminiKey, lovableKey }, pdfBytes);
 
       // Replace any existing rows for this batch (idempotent retries)
       await context.supabase.from("extraction_questions").delete().eq("batch_id", batch.id);
@@ -521,13 +548,14 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
     const {
       createSmokeTestPdf,
       splitPdfIntoBatches,
-      extractQuestionsWithGemini,
+      extractQuestions,
       validateWithGroq,
     } = await import("./extraction.server");
 
     const geminiKey = process.env.GEMINI_API_KEY;
+    const lovableKey = process.env.LOVABLE_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
-    if (!geminiKey) throw new Error("Missing GEMINI_API_KEY");
+    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
     if (!groqKey) throw new Error("Missing GROQ_API_KEY");
 
     type SmokeDetails = { [key: string]: string | number | boolean | null | string[] | number[] };
@@ -621,7 +649,13 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
           if (up.error) throw new Error(up.error.message);
         }
         await supabaseAdmin.from("extraction_batches").insert(
-          r.batches.map((b) => ({ job_id: jobId!, page_from: b.pageFrom, page_to: b.pageTo, status: "pending" })),
+          r.batches.map((b) => ({
+            job_id: jobId!,
+            page_from: b.pageFrom,
+            page_to: b.pageTo,
+            batch_storage_path: `jobs/${jobId}/batches/batch-${b.batchIndex.toString().padStart(3, "0")}.pdf`,
+            status: "pending",
+          })) as never,
         );
         await supabaseAdmin.from("extraction_pages").insert(
           Array.from({ length: r.pageCount }, (_, i) => ({ job_id: jobId!, page_number: i + 1, status: "ready" })),
@@ -645,7 +679,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
             .eq("id", batch.id);
           const pdf = split.batches.find((b) => b.pageFrom === batch.page_from && b.pageTo === batch.page_to);
           if (!pdf) throw new Error(`Missing smoke batch bytes for pages ${batch.page_from}-${batch.page_to}`);
-          const { questions, raw } = await extractQuestionsWithGemini(geminiKey, pdf.bytes);
+          const { questions, raw } = await extractQuestions({ geminiKey, lovableKey }, pdf.bytes);
           if (questions.length === 0) throw new Error(`Gemini extracted 0 questions for pages ${batch.page_from}-${batch.page_to}`);
           await supabaseAdmin.from("extraction_questions").upsert(
             questions.map((q) => ({

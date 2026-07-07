@@ -141,6 +141,7 @@ export type Database = {
       extraction_batches: {
         Row: {
           attempts: number
+          batch_storage_path: string | null
           created_at: string
           id: string
           job_id: string
@@ -154,6 +155,7 @@ export type Database = {
         }
         Insert: {
           attempts?: number
+          batch_storage_path?: string | null
           created_at?: string
           id?: string
           job_id: string
@@ -167,6 +169,7 @@ export type Database = {
         }
         Update: {
           attempts?: number
+          batch_storage_path?: string | null
           created_at?: string
           id?: string
           job_id?: string
