@@ -218,6 +218,8 @@ async function extractQuestionsWithLovableAi(
       },
     ],
     temperature: 0.1,
+    maxRetries: 1,
+    timeout: 60_000,
   });
   return { questions: output.questions as ExtractedQuestion[], raw: { text, usage, finishReason, provider: "lovable-ai" } };
 }
