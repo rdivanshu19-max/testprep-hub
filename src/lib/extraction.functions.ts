@@ -174,8 +174,9 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
         job_id: data.jobId,
         page_from: b.pageFrom,
         page_to: b.pageTo,
+        batch_storage_path: `jobs/${data.jobId}/batches/batch-${b.batchIndex.toString().padStart(3, "0")}.pdf`,
         status: "pending",
-      })),
+      })) as never,
     );
     await context.supabase.from("extraction_pages").insert(
       Array.from({ length: pageCount }, (_, i) => ({
@@ -210,6 +211,25 @@ export const processNextBatch = createServerFn({ method: "POST" })
     if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
+    const staleCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
+    const { data: staleRunning } = await context.supabase
+      .from("extraction_batches")
+      .select("id")
+      .eq("job_id", data.jobId)
+      .eq("status", "running")
+      .lt("updated_at", staleCutoff);
+    if ((staleRunning ?? []).length > 0) {
+      const ids = (staleRunning ?? []).map((b) => b.id);
+      await context.supabase
+        .from("extraction_batches")
+        .update({ status: "pending", last_error: null })
+        .in("id", ids);
+      await auditExtraction(context.supabase, data.jobId, context.userId, "extract.stale_batches_reset", {
+        batchIds: ids,
+        timeoutMinutes: 5,
+      });
+    }
+
     // Find next pending batch (or specific retry batch)
     let batchQuery = context.supabase
       .from("extraction_batches")
@@ -222,12 +242,17 @@ export const processNextBatch = createServerFn({ method: "POST" })
         .from("extraction_batches")
         .select("*")
         .eq("id", data.retryBatchId)
+        .eq("job_id", data.jobId)
         .limit(1);
     } else {
       batchQuery = batchQuery.eq("status", "pending");
     }
     const { data: batchRows } = await batchQuery;
     const batch = batchRows?.[0];
+
+    if (batch && data.retryBatchId && batch.status === "done") {
+      throw new Error("This batch is already complete. Only pending, running, or failed batches can be retried.");
+    }
 
     if (!batch) {
       const { count: pendingCount } = await context.supabase
@@ -263,7 +288,8 @@ export const processNextBatch = createServerFn({ method: "POST" })
     });
 
     try {
-      const path = `jobs/${data.jobId}/batches/batch-${(Math.floor((batch.page_from - 1) / 2))
+      const typedBatch = batch as typeof batch & { batch_storage_path?: string | null };
+      const path = typedBatch.batch_storage_path ?? `jobs/${data.jobId}/batches/batch-${(Math.floor((batch.page_from - 1) / 2))
         .toString()
         .padStart(3, "0")}.pdf`;
       const dl = await supabaseAdmin.storage.from("question-images").download(path);
@@ -621,7 +647,13 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
           if (up.error) throw new Error(up.error.message);
         }
         await supabaseAdmin.from("extraction_batches").insert(
-          r.batches.map((b) => ({ job_id: jobId!, page_from: b.pageFrom, page_to: b.pageTo, status: "pending" })),
+          r.batches.map((b) => ({
+            job_id: jobId!,
+            page_from: b.pageFrom,
+            page_to: b.pageTo,
+            batch_storage_path: `jobs/${jobId}/batches/batch-${b.batchIndex.toString().padStart(3, "0")}.pdf`,
+            status: "pending",
+          })) as never,
         );
         await supabaseAdmin.from("extraction_pages").insert(
           Array.from({ length: r.pageCount }, (_, i) => ({ job_id: jobId!, page_number: i + 1, status: "ready" })),
