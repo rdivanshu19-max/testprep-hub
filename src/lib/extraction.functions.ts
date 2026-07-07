@@ -207,8 +207,9 @@ export const processNextBatch = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("Missing GEMINI_API_KEY");
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const lovableKey = process.env.LOVABLE_API_KEY;
+    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const staleCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
@@ -296,8 +297,8 @@ export const processNextBatch = createServerFn({ method: "POST" })
       if (dl.error || !dl.data) throw new Error(`Batch download: ${dl.error?.message}`);
       const pdfBytes = new Uint8Array(await dl.data.arrayBuffer());
 
-      const { extractQuestionsWithGemini } = await import("./extraction.server");
-      const { questions, raw } = await extractQuestionsWithGemini(apiKey, pdfBytes);
+      const { extractQuestions } = await import("./extraction.server");
+      const { questions, raw } = await extractQuestions({ geminiKey, lovableKey }, pdfBytes);
 
       // Replace any existing rows for this batch (idempotent retries)
       await context.supabase.from("extraction_questions").delete().eq("batch_id", batch.id);
@@ -547,13 +548,14 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
     const {
       createSmokeTestPdf,
       splitPdfIntoBatches,
-      extractQuestionsWithGemini,
+      extractQuestions,
       validateWithGroq,
     } = await import("./extraction.server");
 
     const geminiKey = process.env.GEMINI_API_KEY;
+    const lovableKey = process.env.LOVABLE_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
-    if (!geminiKey) throw new Error("Missing GEMINI_API_KEY");
+    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
     if (!groqKey) throw new Error("Missing GROQ_API_KEY");
 
     type SmokeDetails = { [key: string]: string | number | boolean | null | string[] | number[] };
@@ -677,7 +679,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
             .eq("id", batch.id);
           const pdf = split.batches.find((b) => b.pageFrom === batch.page_from && b.pageTo === batch.page_to);
           if (!pdf) throw new Error(`Missing smoke batch bytes for pages ${batch.page_from}-${batch.page_to}`);
-          const { questions, raw } = await extractQuestionsWithGemini(geminiKey, pdf.bytes);
+          const { questions, raw } = await extractQuestions({ geminiKey, lovableKey }, pdf.bytes);
           if (questions.length === 0) throw new Error(`Gemini extracted 0 questions for pages ${batch.page_from}-${batch.page_to}`);
           await supabaseAdmin.from("extraction_questions").upsert(
             questions.map((q) => ({
