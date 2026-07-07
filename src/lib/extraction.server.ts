@@ -1,6 +1,10 @@
 // SERVER-ONLY helpers for the PDF→CBT extraction pipeline.
 // Imported dynamically from inside server-function handlers — never from client code.
 
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { generateText, Output } from "ai";
+import { z } from "zod";
+
 export const BATCH_PAGE_SIZE = 2;
 
 // ---------------------------------------------------------------------------
@@ -101,6 +105,7 @@ export function toBase64(bytes: Uint8Array): string {
 // ---------------------------------------------------------------------------
 
 const GEMINI_MODEL = "gemini-2.0-flash";
+const LOVABLE_MODEL = "google/gemini-3-flash-preview";
 
 export type ExtractedQuestion = {
   questionNumber: number;
@@ -172,6 +177,51 @@ const EXTRACTION_RESPONSE_SCHEMA = {
   },
 };
 
+const ExtractedQuestionSchema = z.object({
+  questionNumber: z.coerce.number().int().min(1),
+  questionType: z.enum(["single_correct", "multiple_correct", "integer", "matrix_match", "assertion_reason", "paragraph"]),
+  subject: z.string().default(""),
+  questionText: z.string().default(""),
+  options: z.record(z.string(), z.string()).default({}),
+  answer: z.string().default(""),
+  hasImage: z.boolean().default(false),
+  imageUrl: z.string().default(""),
+});
+
+function createLovableGateway(apiKey: string) {
+  return createOpenAICompatible({
+    name: "lovable-ai",
+    baseURL: "https://ai.gateway.lovable.dev/v1",
+    headers: { "Lovable-API-Key": apiKey },
+    supportsStructuredOutputs: true,
+  });
+}
+
+async function extractQuestionsWithLovableAi(
+  apiKey: string,
+  pdfBytes: Uint8Array,
+): Promise<{ questions: ExtractedQuestion[]; raw: unknown }> {
+  const gateway = createLovableGateway(apiKey);
+  const { output, text, usage, finishReason } = await generateText({
+    model: gateway(LOVABLE_MODEL),
+    output: Output.object({
+      schema: z.object({ questions: z.array(ExtractedQuestionSchema) }),
+      name: "extracted_questions",
+    }),
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "file", data: pdfBytes, mediaType: "application/pdf", filename: "batch.pdf" },
+          { type: "text", text: EXTRACTION_PROMPT },
+        ],
+      },
+    ],
+    temperature: 0.1,
+  });
+  return { questions: output.questions as ExtractedQuestion[], raw: { text, usage, finishReason, provider: "lovable-ai" } };
+}
+
 export async function extractQuestionsWithGemini(
   apiKey: string,
   pdfBytes: Uint8Array,
@@ -224,6 +274,33 @@ export async function extractQuestionsWithGemini(
     );
   }
   return { questions, raw: json };
+}
+
+export async function extractQuestions(
+  keys: { geminiKey?: string; lovableKey?: string },
+  pdfBytes: Uint8Array,
+): Promise<{ questions: ExtractedQuestion[]; raw: unknown }> {
+  const failures: string[] = [];
+  if (keys.geminiKey) {
+    try {
+      return await extractQuestionsWithGemini(keys.geminiKey, pdfBytes);
+    } catch (err) {
+      failures.push(errorSummary("Gemini", err));
+    }
+  }
+  if (keys.lovableKey) {
+    try {
+      return await extractQuestionsWithLovableAi(keys.lovableKey, pdfBytes);
+    } catch (err) {
+      failures.push(errorSummary("Lovable AI", err));
+    }
+  }
+  throw new Error(`All extraction providers failed: ${failures.join(" | ") || "no provider key configured"}`);
+}
+
+function errorSummary(provider: string, err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return `${provider}: ${msg.slice(0, 500)}`;
 }
 
 // ---------------------------------------------------------------------------
