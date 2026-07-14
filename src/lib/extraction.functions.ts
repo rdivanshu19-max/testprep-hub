@@ -673,7 +673,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
           const pdf = split.batches.find((b) => b.pageFrom === batch.page_from && b.pageTo === batch.page_to);
           if (!pdf) throw new Error(`Missing smoke batch bytes for pages ${batch.page_from}-${batch.page_to}`);
           const { questions, raw } = await extractQuestions({ geminiKey, lovableKey }, pdf.bytes);
-          if (questions.length === 0) throw new Error(`Gemini extracted 0 questions for pages ${batch.page_from}-${batch.page_to}`);
+          if (questions.length === 0) throw new Error(`Extraction produced 0 questions for pages ${batch.page_from}-${batch.page_to}`);
           await supabaseAdmin.from("extraction_questions").upsert(
             questions.map((q) => ({
               job_id: jobId!,
