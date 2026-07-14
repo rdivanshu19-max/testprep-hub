@@ -533,3 +533,62 @@ Rules:
   };
   return { report, raw: json };
 }
+
+export async function validateQuestions(
+  apiKey: string | undefined,
+  questions: ExtractedQuestion[],
+  expectedCount: number | null,
+): Promise<{ report: ValidationReport; raw: unknown }> {
+  if (apiKey) {
+    try {
+      return await validateWithGroq(apiKey, questions, expectedCount);
+    } catch (err) {
+      const local = validateQuestionsLocally(questions, expectedCount);
+      return {
+        report: local,
+        raw: {
+          provider: "local-validation-fallback",
+          warning: errorSummary("Groq", err),
+        },
+      };
+    }
+  }
+  return { report: validateQuestionsLocally(questions, expectedCount), raw: { provider: "local-validation-fallback" } };
+}
+
+function validateQuestionsLocally(questions: ExtractedQuestion[], expectedCount: number | null): ValidationReport {
+  const numbers = questions.map((q) => Number(q.questionNumber)).filter((n) => Number.isFinite(n) && n > 0);
+  const maxNumber = expectedCount ?? Math.max(0, ...numbers);
+  const seen = new Set<number>();
+  const duplicates = new Set<number>();
+  for (const n of numbers) {
+    if (seen.has(n)) duplicates.add(n);
+    seen.add(n);
+  }
+  const missingNumbers: number[] = [];
+  for (let n = 1; n <= maxNumber; n += 1) {
+    if (!seen.has(n)) missingNumbers.push(n);
+  }
+  const brokenOptions = questions
+    .filter((q) => {
+      if (q.questionType !== "single_correct" && q.questionType !== "multiple_correct") return false;
+      const options = q.options ?? {};
+      return ["A", "B", "C", "D"].some((key) => !String(options[key] ?? "").trim());
+    })
+    .map((q) => q.questionNumber);
+  const emptyQuestions = questions.filter((q) => q.questionText.trim().length < 20).map((q) => q.questionNumber);
+  const brokenEquations = questions
+    .filter((q) => (q.questionText.match(/\$/g)?.length ?? 0) % 2 !== 0)
+    .map((q) => q.questionNumber);
+  const penalties = missingNumbers.length * 15 + duplicates.size * 10 + brokenOptions.length * 8 + emptyQuestions.length * 10 + brokenEquations.length * 5;
+  return {
+    missingNumbers,
+    duplicates: Array.from(duplicates),
+    brokenOptions,
+    emptyQuestions,
+    brokenEquations,
+    invalidJson: false,
+    score: Math.max(0, Math.min(100, 100 - penalties)),
+    notes: "Validated locally after extraction.",
+  };
+}
