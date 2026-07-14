@@ -13,8 +13,6 @@ import {
   recoverStuckJobs,
 } from "./extraction-utils.server";
 
-const PDF_BUCKET = "pdf-uploads";
-
 // =========================================================================
 // LIST + GET
 // =========================================================================
@@ -134,7 +132,7 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
       .single();
     if (!job) throw new Error("Job not found");
 
-    const pdfDl = await supabaseAdmin.storage.from(PDF_BUCKET).download(job.pdf_storage_path);
+    const pdfDl = await supabaseAdmin.storage.from("pdf-uploads").download(job.pdf_storage_path);
     if (pdfDl.error || !pdfDl.data) throw new Error(`PDF download: ${pdfDl.error?.message}`);
     const pdfBytes = new Uint8Array(await pdfDl.data.arrayBuffer());
 
@@ -209,7 +207,6 @@ export const processNextBatch = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const geminiKey = process.env.GEMINI_API_KEY;
     const lovableKey = process.env.LOVABLE_API_KEY;
-    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const staleCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
@@ -553,7 +550,6 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
 
     const geminiKey = process.env.GEMINI_API_KEY;
     const lovableKey = process.env.LOVABLE_API_KEY;
-    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
 
     type SmokeDetails = { [key: string]: string | number | boolean | null | string[] | number[] };
     type SmokeStep = { name: string; ok: boolean; startedAt: string; endedAt?: string; details?: SmokeDetails; error?: string };
@@ -608,7 +604,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
       const storagePath = `smoke/${context.userId}/${Date.now()}-pipeline-smoke.pdf`;
 
       await runStep("upload", async () => {
-        const up = await supabaseAdmin.storage.from(PDF_BUCKET).upload(storagePath, pdfBytes, {
+        const up = await supabaseAdmin.storage.from("pdf-uploads").upload(storagePath, pdfBytes, {
           contentType: "application/pdf",
           upsert: true,
         });
