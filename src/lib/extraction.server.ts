@@ -306,6 +306,23 @@ export async function extractQuestions(
   pdfBytes: Uint8Array,
 ): Promise<{ questions: ExtractedQuestion[]; raw: unknown }> {
   const failures: string[] = [];
+  try {
+    const text = await extractPdfText(pdfBytes);
+    const questions = parseQuestionsFromText(text);
+    if (questions.length > 0) {
+      return {
+        questions,
+        raw: {
+          provider: "pdf-text-primary",
+          textPreview: text.slice(0, 1000),
+        },
+      };
+    }
+    failures.push("PDF text parser: no parseable questions found");
+  } catch (err) {
+    failures.push(errorSummary("PDF text parser", err));
+  }
+
   if (keys.geminiKey) {
     try {
       return await extractQuestionsWithGemini(keys.geminiKey, pdfBytes);
@@ -319,23 +336,6 @@ export async function extractQuestions(
     } catch (err) {
       failures.push(errorSummary("Lovable AI", err));
     }
-  }
-  try {
-    const text = await extractPdfText(pdfBytes);
-    const questions = parseQuestionsFromText(text);
-    if (questions.length > 0) {
-      return {
-        questions,
-        raw: {
-          provider: "pdf-text-fallback",
-          warnings: failures,
-          textPreview: text.slice(0, 1000),
-        },
-      };
-    }
-    failures.push("PDF text fallback: no parseable questions found");
-  } catch (err) {
-    failures.push(errorSummary("PDF text fallback", err));
   }
   throw new Error(`All extraction providers failed: ${failures.join(" | ") || "no provider key configured"}`);
 }
