@@ -92,7 +92,7 @@ export async function extractPdfText(pdfBytes: Uint8Array): Promise<string> {
     data: pdfBytes,
     disableWorker: true,
     useSystemFonts: true,
-  });
+  } as object);
   const pdf = await loadingTask.promise;
   const pages: string[] = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -104,7 +104,8 @@ export async function extractPdfText(pdfBytes: Uint8Array): Promise<string> {
       .join("\n");
     pages.push(lines);
   }
-  await pdf.destroy();
+  await (pdf as unknown as { destroy?: () => Promise<void>; cleanup?: () => Promise<void> }).destroy?.();
+  await (pdf as unknown as { cleanup?: () => Promise<void> }).cleanup?.();
   return pages.join("\n\n").trim();
 }
 
