@@ -382,8 +382,7 @@ export const runValidation = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("Missing GROQ_API_KEY");
-    const { validateWithGroq } = await import("./extraction.server");
+    const { validateQuestions } = await import("./extraction.server");
 
     await context.supabase
       .from("extraction_jobs")
@@ -422,10 +421,10 @@ export const runValidation = createServerFn({ method: "POST" })
       await auditExtraction(context.supabase, data.jobId, context.userId, "validate.failed", { error: reason });
       throw new Error(reason);
     }
-    let report: Awaited<ReturnType<typeof validateWithGroq>>["report"];
-    let raw: Awaited<ReturnType<typeof validateWithGroq>>["raw"];
+    let report: Awaited<ReturnType<typeof validateQuestions>>["report"];
+    let raw: Awaited<ReturnType<typeof validateQuestions>>["raw"];
     try {
-      ({ report, raw } = await validateWithGroq(
+      ({ report, raw } = await validateQuestions(
         apiKey,
         mapped,
         job?.expected_question_count ?? null,
@@ -549,14 +548,12 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
       createSmokeTestPdf,
       splitPdfIntoBatches,
       extractQuestions,
-      validateWithGroq,
+      validateQuestions,
     } = await import("./extraction.server");
 
     const geminiKey = process.env.GEMINI_API_KEY;
     const lovableKey = process.env.LOVABLE_API_KEY;
-    const groqKey = process.env.GROQ_API_KEY;
     if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
-    if (!groqKey) throw new Error("Missing GROQ_API_KEY");
 
     type SmokeDetails = { [key: string]: string | number | boolean | null | string[] | number[] };
     type SmokeStep = { name: string; ok: boolean; startedAt: string; endedAt?: string; details?: SmokeDetails; error?: string };
@@ -726,7 +723,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
           hasImage: !!q.has_image,
           imageUrl: "",
         }));
-        const { report, raw } = await validateWithGroq(groqKey, mapped, 2);
+        const { report, raw } = await validateQuestions(process.env.GROQ_API_KEY, mapped, 2);
         await supabaseAdmin.from("extraction_validation_reports").insert({
           job_id: jobId,
           missing_numbers: report.missingNumbers,
