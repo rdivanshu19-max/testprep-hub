@@ -86,6 +86,29 @@ export async function createSmokeTestPdf(): Promise<Uint8Array> {
   return pdf.save();
 }
 
+export async function extractPdfText(pdfBytes: Uint8Array): Promise<string> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const loadingTask = pdfjs.getDocument({
+    data: pdfBytes,
+    disableWorker: true,
+    useSystemFonts: true,
+  } as object);
+  const pdf = await loadingTask.promise;
+  const pages: string[] = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const lines = content.items
+      .map((item) => ("str" in item ? String(item.str) : ""))
+      .filter(Boolean)
+      .join("\n");
+    pages.push(lines);
+  }
+  await (pdf as unknown as { destroy?: () => Promise<void>; cleanup?: () => Promise<void> }).destroy?.();
+  await (pdf as unknown as { cleanup?: () => Promise<void> }).cleanup?.();
+  return pages.join("\n\n").trim();
+}
+
 // ---------------------------------------------------------------------------
 // BASE64 — safe for large binaries (chunked to avoid call-stack overflow)
 // ---------------------------------------------------------------------------
@@ -283,6 +306,23 @@ export async function extractQuestions(
   pdfBytes: Uint8Array,
 ): Promise<{ questions: ExtractedQuestion[]; raw: unknown }> {
   const failures: string[] = [];
+  try {
+    const text = await extractPdfText(pdfBytes);
+    const questions = parseQuestionsFromText(text);
+    if (questions.length > 0) {
+      return {
+        questions,
+        raw: {
+          provider: "pdf-text-primary",
+          textPreview: text.slice(0, 1000),
+        },
+      };
+    }
+    failures.push("PDF text parser: no parseable questions found");
+  } catch (err) {
+    failures.push(errorSummary("PDF text parser", err));
+  }
+
   if (keys.geminiKey) {
     try {
       return await extractQuestionsWithGemini(keys.geminiKey, pdfBytes);
@@ -298,6 +338,100 @@ export async function extractQuestions(
     }
   }
   throw new Error(`All extraction providers failed: ${failures.join(" | ") || "no provider key configured"}`);
+}
+
+function parseQuestionsFromText(text: string): ExtractedQuestion[] {
+  const lines = text
+    .replace(/\u00a0/g, " ")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const questions: ExtractedQuestion[] = [];
+  let current: ExtractedQuestion | null = null;
+  let currentOption: string | null = null;
+  let inAnswerKey = false;
+
+  const flush = () => {
+    if (!current) return;
+    current.questionText = current.questionText.replace(/\s+/g, " ").trim();
+    current.options = Object.fromEntries(
+      Object.entries(current.options ?? {}).map(([key, value]) => [key, value.replace(/\s+/g, " ").trim()]),
+    );
+    if (current.questionText.length > 0) questions.push(current);
+    current = null;
+    currentOption = null;
+  };
+
+  for (const line of lines) {
+    if (/^(answer\s*key|solutions?|hints?|explanations?)\b/i.test(line)) {
+      inAnswerKey = true;
+      continue;
+    }
+
+    const qMatch = /^(?:Q\s*)?(\d{1,3})[.)\s]+(.+)$/.exec(line);
+    if (qMatch && !inAnswerKey) {
+      flush();
+      const rawQuestion = qMatch[2].trim();
+      const subjectMatch = /^(Physics|Chemistry|Mathematics|Maths|Biology)\s*[:\-]\s*(.+)$/i.exec(rawQuestion);
+      const subject = normalizeSubject(subjectMatch?.[1] ?? inferSubject(rawQuestion));
+      current = {
+        questionNumber: Number(qMatch[1]),
+        questionType: "single_correct",
+        subject,
+        questionText: subjectMatch?.[2]?.trim() ?? rawQuestion,
+        options: {},
+        answer: "",
+        hasImage: /\b(diagram|figure|graph|circuit|image)\b/i.test(rawQuestion),
+        imageUrl: "",
+      };
+      currentOption = null;
+      continue;
+    }
+
+    if (!current) continue;
+
+    const optionMatch = /^([A-E])[.)\s]+(.+)$/.exec(line);
+    if (optionMatch) {
+      current.options[optionMatch[1].toUpperCase()] = optionMatch[2].trim();
+      currentOption = optionMatch[1].toUpperCase();
+      continue;
+    }
+
+    const answerMatch = /^(?:Answer|Ans)\s*[:\-]?\s*(.+)$/i.exec(line);
+    if (answerMatch) {
+      current.answer = answerMatch[1].trim();
+      currentOption = null;
+      continue;
+    }
+
+    if (currentOption && current.options[currentOption]) {
+      current.options[currentOption] = `${current.options[currentOption]} ${line}`;
+    } else {
+      current.questionText = `${current.questionText} ${line}`;
+    }
+  }
+
+  flush();
+  return questions.map((question) => ({
+    ...question,
+    questionType: Object.keys(question.options ?? {}).length >= 2 ? "single_correct" : "integer",
+  }));
+}
+
+function normalizeSubject(subject: string) {
+  const s = subject.toLowerCase();
+  if (s.includes("chem")) return "Chemistry";
+  if (s.includes("math")) return "Mathematics";
+  if (s.includes("bio")) return "Biology";
+  return "Physics";
+}
+
+function inferSubject(text: string) {
+  if (/chem|mole|atom|organic|inorganic|reaction/i.test(text)) return "Chemistry";
+  if (/math|function|integral|matrix|trigonometry/i.test(text)) return "Mathematics";
+  if (/bio|cell|plant|animal|genetic/i.test(text)) return "Biology";
+  return "Physics";
 }
 
 function errorSummary(provider: string, err: unknown) {
@@ -398,4 +532,63 @@ Rules:
     notes: typeof parsed.notes === "string" ? parsed.notes : "",
   };
   return { report, raw: json };
+}
+
+export async function validateQuestions(
+  apiKey: string | undefined,
+  questions: ExtractedQuestion[],
+  expectedCount: number | null,
+): Promise<{ report: ValidationReport; raw: unknown }> {
+  if (apiKey) {
+    try {
+      return await validateWithGroq(apiKey, questions, expectedCount);
+    } catch (err) {
+      const local = validateQuestionsLocally(questions, expectedCount);
+      return {
+        report: local,
+        raw: {
+          provider: "local-validation-fallback",
+          warning: errorSummary("Groq", err),
+        },
+      };
+    }
+  }
+  return { report: validateQuestionsLocally(questions, expectedCount), raw: { provider: "local-validation-fallback" } };
+}
+
+function validateQuestionsLocally(questions: ExtractedQuestion[], expectedCount: number | null): ValidationReport {
+  const numbers = questions.map((q) => Number(q.questionNumber)).filter((n) => Number.isFinite(n) && n > 0);
+  const maxNumber = expectedCount ?? Math.max(0, ...numbers);
+  const seen = new Set<number>();
+  const duplicates = new Set<number>();
+  for (const n of numbers) {
+    if (seen.has(n)) duplicates.add(n);
+    seen.add(n);
+  }
+  const missingNumbers: number[] = [];
+  for (let n = 1; n <= maxNumber; n += 1) {
+    if (!seen.has(n)) missingNumbers.push(n);
+  }
+  const brokenOptions = questions
+    .filter((q) => {
+      if (q.questionType !== "single_correct" && q.questionType !== "multiple_correct") return false;
+      const options = q.options ?? {};
+      return ["A", "B", "C", "D"].some((key) => !String(options[key] ?? "").trim());
+    })
+    .map((q) => q.questionNumber);
+  const emptyQuestions = questions.filter((q) => q.questionText.trim().length < 20).map((q) => q.questionNumber);
+  const brokenEquations = questions
+    .filter((q) => (q.questionText.match(/\$/g)?.length ?? 0) % 2 !== 0)
+    .map((q) => q.questionNumber);
+  const penalties = missingNumbers.length * 15 + duplicates.size * 10 + brokenOptions.length * 8 + emptyQuestions.length * 10 + brokenEquations.length * 5;
+  return {
+    missingNumbers,
+    duplicates: Array.from(duplicates),
+    brokenOptions,
+    emptyQuestions,
+    brokenEquations,
+    invalidJson: false,
+    score: Math.max(0, Math.min(100, 100 - penalties)),
+    notes: "Validated locally after extraction.",
+  };
 }

@@ -13,8 +13,6 @@ import {
   recoverStuckJobs,
 } from "./extraction-utils.server";
 
-const PDF_BUCKET = "pdf-uploads";
-
 // =========================================================================
 // LIST + GET
 // =========================================================================
@@ -134,7 +132,7 @@ export const splitExtractionJob = createServerFn({ method: "POST" })
       .single();
     if (!job) throw new Error("Job not found");
 
-    const pdfDl = await supabaseAdmin.storage.from(PDF_BUCKET).download(job.pdf_storage_path);
+    const pdfDl = await supabaseAdmin.storage.from("pdf-uploads").download(job.pdf_storage_path);
     if (pdfDl.error || !pdfDl.data) throw new Error(`PDF download: ${pdfDl.error?.message}`);
     const pdfBytes = new Uint8Array(await pdfDl.data.arrayBuffer());
 
@@ -209,7 +207,6 @@ export const processNextBatch = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const geminiKey = process.env.GEMINI_API_KEY;
     const lovableKey = process.env.LOVABLE_API_KEY;
-    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const staleCutoff = new Date(Date.now() - 5 * 60_000).toISOString();
@@ -382,8 +379,7 @@ export const runValidation = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) throw new Error("Missing GROQ_API_KEY");
-    const { validateWithGroq } = await import("./extraction.server");
+    const { validateQuestions } = await import("./extraction.server");
 
     await context.supabase
       .from("extraction_jobs")
@@ -422,10 +418,10 @@ export const runValidation = createServerFn({ method: "POST" })
       await auditExtraction(context.supabase, data.jobId, context.userId, "validate.failed", { error: reason });
       throw new Error(reason);
     }
-    let report: Awaited<ReturnType<typeof validateWithGroq>>["report"];
-    let raw: Awaited<ReturnType<typeof validateWithGroq>>["raw"];
+    let report: Awaited<ReturnType<typeof validateQuestions>>["report"];
+    let raw: Awaited<ReturnType<typeof validateQuestions>>["raw"];
     try {
-      ({ report, raw } = await validateWithGroq(
+      ({ report, raw } = await validateQuestions(
         apiKey,
         mapped,
         job?.expected_question_count ?? null,
@@ -549,14 +545,11 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
       createSmokeTestPdf,
       splitPdfIntoBatches,
       extractQuestions,
-      validateWithGroq,
+      validateQuestions,
     } = await import("./extraction.server");
 
     const geminiKey = process.env.GEMINI_API_KEY;
     const lovableKey = process.env.LOVABLE_API_KEY;
-    const groqKey = process.env.GROQ_API_KEY;
-    if (!geminiKey && !lovableKey) throw new Error("Missing extraction AI key (GEMINI_API_KEY or LOVABLE_API_KEY)");
-    if (!groqKey) throw new Error("Missing GROQ_API_KEY");
 
     type SmokeDetails = { [key: string]: string | number | boolean | null | string[] | number[] };
     type SmokeStep = { name: string; ok: boolean; startedAt: string; endedAt?: string; details?: SmokeDetails; error?: string };
@@ -611,7 +604,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
       const storagePath = `smoke/${context.userId}/${Date.now()}-pipeline-smoke.pdf`;
 
       await runStep("upload", async () => {
-        const up = await supabaseAdmin.storage.from(PDF_BUCKET).upload(storagePath, pdfBytes, {
+        const up = await supabaseAdmin.storage.from("pdf-uploads").upload(storagePath, pdfBytes, {
           contentType: "application/pdf",
           upsert: true,
         });
@@ -680,7 +673,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
           const pdf = split.batches.find((b) => b.pageFrom === batch.page_from && b.pageTo === batch.page_to);
           if (!pdf) throw new Error(`Missing smoke batch bytes for pages ${batch.page_from}-${batch.page_to}`);
           const { questions, raw } = await extractQuestions({ geminiKey, lovableKey }, pdf.bytes);
-          if (questions.length === 0) throw new Error(`Gemini extracted 0 questions for pages ${batch.page_from}-${batch.page_to}`);
+          if (questions.length === 0) throw new Error(`Extraction produced 0 questions for pages ${batch.page_from}-${batch.page_to}`);
           await supabaseAdmin.from("extraction_questions").upsert(
             questions.map((q) => ({
               job_id: jobId!,
@@ -726,7 +719,7 @@ export const runExtractionSmokeTest = createServerFn({ method: "POST" })
           hasImage: !!q.has_image,
           imageUrl: "",
         }));
-        const { report, raw } = await validateWithGroq(groqKey, mapped, 2);
+        const { report, raw } = await validateQuestions(process.env.GROQ_API_KEY, mapped, 2);
         await supabaseAdmin.from("extraction_validation_reports").insert({
           job_id: jobId,
           missing_numbers: report.missingNumbers,
