@@ -63,7 +63,7 @@ function JobPage() {
     if (runLockRef.current) return;
     runLockRef.current = true;
     setRunning(true);
-    setStageMsg("Extracting questions with Gemini…");
+    setStageMsg("Extracting questions…");
     try {
       for (let i = 0; i < 200; i++) {
         const r = await proc({ data: { jobId } });
@@ -74,7 +74,7 @@ function JobPage() {
           `Extracted batch (pages ${r.pagesProcessed}, +${r.extractedCount} Qs). ${r.pendingCount} batches left…`,
         );
       }
-      setStageMsg("Validating with Groq…");
+      setStageMsg("Validating extraction…");
       await validate({ data: { jobId } });
       setStageMsg("");
       toast.success("Extraction + validation complete");
@@ -113,7 +113,7 @@ function JobPage() {
         qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
         if (p.done || !p.processedBatchId) break;
       }
-      setStageMsg("Validating with Groq…");
+      setStageMsg("Validating extraction…");
       await validate({ data: { jobId } });
       qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
       setStageMsg("");
@@ -144,7 +144,7 @@ function JobPage() {
           qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
           if (p.done || !p.processedBatchId) break;
         }
-        setStageMsg("Validating with Groq…");
+        setStageMsg("Validating extraction…");
         await validate({ data: { jobId } });
       } else if (r.stage === "extracting") {
         setStageMsg(`Re-running ${r.batchIds.length} failed batch${r.batchIds.length === 1 ? "" : "es"}…`);
@@ -153,7 +153,7 @@ function JobPage() {
           qc.invalidateQueries({ queryKey: ["extraction-job", jobId] });
           if (p.done || !p.processedBatchId) break;
         }
-        setStageMsg("Validating with Groq…");
+        setStageMsg("Validating extraction…");
         await validate({ data: { jobId } });
       } else if (r.stage === "validating") {
         setStageMsg("Re-running validation…");
