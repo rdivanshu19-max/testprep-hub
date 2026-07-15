@@ -44,6 +44,17 @@ function JobPage() {
   const recover = useServerFn(recoverStuckExtractionJobs);
   const smokeTest = useServerFn(runExtractionSmokeTest);
   const publish = useServerFn(publishExtractionJob);
+  const continueManualFn = useServerFn(continueExtractionManually);
+
+  const continueManual = async () => {
+    try {
+      const r = await continueManualFn({ data: { jobId } });
+      toast.success(`Draft created — ${r.importedCount} questions imported`);
+      navigate({ to: "/admin/test-builder/$testId", params: { testId: r.testId } });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
 
   const data = useQuery({
     queryKey: ["extraction-job", jobId],
