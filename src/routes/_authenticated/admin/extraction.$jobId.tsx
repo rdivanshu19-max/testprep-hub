@@ -336,6 +336,9 @@ function JobPage() {
               Retry {report.missing_numbers.length} missing
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={continueManual} disabled={running}>
+            Continue manually
+          </Button>
           <Button
             onClick={() => publishMut.mutate()}
             disabled={publishMut.isPending || questions.length === 0 || job.status === "published"}
@@ -345,6 +348,7 @@ function JobPage() {
           </Button>
         </div>
       </div>
+
 
       {/* PIPELINE STAGES */}
       <div className="mt-6 rounded-xl border border-border bg-card p-5">
