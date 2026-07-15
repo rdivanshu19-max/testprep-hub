@@ -395,29 +395,3 @@ function MathText({ text }: { text: string }) {
   );
 }
 
-export function CreateTestButton() {
-  const navigate = useNavigate();
-  const create = useServerFn(createTestDraft);
-  const [busy, setBusy] = useState(false);
-  return (
-    <Button
-      size="sm"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true);
-        try {
-          const r = await create({
-            data: { title: "Untitled test", exam: "jee_main", kind: "custom", duration_min: 60 },
-          });
-          navigate({ to: "/admin/test-builder/$testId", params: { testId: r.testId } });
-        } catch (e) {
-          toast.error((e as Error).message);
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      {busy ? "Creating…" : "+ New test"}
-    </Button>
-  );
-}
