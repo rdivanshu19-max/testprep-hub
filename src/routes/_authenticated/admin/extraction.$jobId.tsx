@@ -16,6 +16,7 @@ import {
   splitExtractionJob,
   updateExtractionQuestion,
 } from "@/lib/extraction.functions";
+import { continueExtractionManually } from "@/lib/tests.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
