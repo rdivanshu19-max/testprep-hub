@@ -340,7 +340,7 @@ export async function extractQuestions(
   throw new Error(`All extraction providers failed: ${failures.join(" | ") || "no provider key configured"}`);
 }
 
-function parseQuestionsFromText(text: string): ExtractedQuestion[] {
+export function parseQuestionsFromText(text: string): ExtractedQuestion[] {
   const lines = text
     .replace(/\u00a0/g, " ")
     .split(/\r?\n/)

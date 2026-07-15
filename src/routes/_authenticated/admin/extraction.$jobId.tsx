@@ -16,6 +16,7 @@ import {
   splitExtractionJob,
   updateExtractionQuestion,
 } from "@/lib/extraction.functions";
+import { continueExtractionManually } from "@/lib/tests.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +44,17 @@ function JobPage() {
   const recover = useServerFn(recoverStuckExtractionJobs);
   const smokeTest = useServerFn(runExtractionSmokeTest);
   const publish = useServerFn(publishExtractionJob);
+  const continueManualFn = useServerFn(continueExtractionManually);
+
+  const continueManual = async () => {
+    try {
+      const r = await continueManualFn({ data: { jobId } });
+      toast.success(`Draft created — ${r.imported} questions imported`);
+      navigate({ to: "/admin/test-builder/$testId", params: { testId: r.testId } });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
 
   const data = useQuery({
     queryKey: ["extraction-job", jobId],
@@ -336,6 +348,9 @@ function JobPage() {
               Retry {report.missing_numbers.length} missing
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={continueManual} disabled={running}>
+            Continue manually
+          </Button>
           <Button
             onClick={() => publishMut.mutate()}
             disabled={publishMut.isPending || questions.length === 0 || job.status === "published"}
@@ -345,6 +360,7 @@ function JobPage() {
           </Button>
         </div>
       </div>
+
 
       {/* PIPELINE STAGES */}
       <div className="mt-6 rounded-xl border border-border bg-card p-5">
