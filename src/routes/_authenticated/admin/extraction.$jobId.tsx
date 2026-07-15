@@ -49,7 +49,7 @@ function JobPage() {
   const continueManual = async () => {
     try {
       const r = await continueManualFn({ data: { jobId } });
-      toast.success(`Draft created — ${r.importedCount} questions imported`);
+      toast.success(`Draft created — ${r.imported} questions imported`);
       navigate({ to: "/admin/test-builder/$testId", params: { testId: r.testId } });
     } catch (e) {
       toast.error((e as Error).message);
