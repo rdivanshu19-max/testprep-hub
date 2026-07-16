@@ -449,3 +449,10 @@ function MathText({ text }: { text: string }) {
   );
 }
 
+function SaveBadge({ state }: { state: "idle" | "saving" | "saved" }) {
+  if (state === "saving") return <span className="font-mono text-[10px] text-muted-foreground animate-pulse">Saving…</span>;
+  if (state === "saved") return <span className="flex items-center gap-1 font-mono text-[10px] text-emerald-400"><Check className="h-3 w-3" /> Autosaved</span>;
+  return <span className="font-mono text-[10px] text-muted-foreground">Autosave on</span>;
+}
+
+
