@@ -112,18 +112,66 @@ function Builder() {
 
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState(60);
+  const [metaSaveState, setMetaSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [qSaveState, setQSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const metaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrated = useRef(false);
+
   useEffect(() => {
-    if (data?.test) {
+    if (data?.test && !hydrated.current) {
       setTitle(data.test.title);
       setDuration(data.test.duration_min);
+      hydrated.current = true;
     }
   }, [data?.test]);
 
   const saveMeta = useMutation({
     mutationFn: () =>
       updateMeta({ data: { testId, title, duration_min: duration } }),
-    onSuccess: () => toast.success("Test details saved"),
+    onMutate: () => setMetaSaveState("saving"),
+    onSuccess: () => {
+      setMetaSaveState("saved");
+      setTimeout(() => setMetaSaveState((s) => s === "saved" ? "idle" : s), 1500);
+    },
   });
+
+  // Autosave meta on change (debounced)
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (!title.trim()) return;
+    if (metaTimer.current) clearTimeout(metaTimer.current);
+    metaTimer.current = setTimeout(() => saveMeta.mutate(), 800);
+    return () => { if (metaTimer.current) clearTimeout(metaTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, duration]);
+
+  // Autosave current question when editing an existing one (has id) — debounced
+  useEffect(() => {
+    if (!current.id) return;
+    if (!current.question_text.trim()) return;
+    if (qTimer.current) clearTimeout(qTimer.current);
+    qTimer.current = setTimeout(async () => {
+      setQSaveState("saving");
+      try {
+        await upsert({
+          data: {
+            testId,
+            order_index: 0,
+            question: { ...current, difficulty: "medium" },
+          },
+        });
+        setQSaveState("saved");
+        qc.invalidateQueries({ queryKey: ["test-builder", testId] });
+        setTimeout(() => setQSaveState((s) => s === "saved" ? "idle" : s), 1500);
+      } catch (e) {
+        setQSaveState("idle");
+      }
+    }, 1200);
+    return () => { if (qTimer.current) clearTimeout(qTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+
 
   if (isLoading || !data) {
     return <main className="p-8 text-muted-foreground">Loading test builder…</main>;
