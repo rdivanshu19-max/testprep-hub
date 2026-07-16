@@ -204,6 +204,10 @@ function Builder() {
 
       {/* Meta */}
       <div className="mb-6 rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Test details</h2>
+          <SaveBadge state={metaSaveState} />
+        </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="md:col-span-2">
             <Label>Title</Label>
@@ -218,12 +222,9 @@ function Builder() {
             />
           </div>
         </div>
-        <div className="mt-3">
-          <Button size="sm" variant="outline" onClick={() => saveMeta.mutate()}>
-            Save details
-          </Button>
-        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">Changes autosave.</p>
       </div>
+
 
       {/* Tabs */}
       <div className="mb-4 flex gap-2 border-b border-border">
