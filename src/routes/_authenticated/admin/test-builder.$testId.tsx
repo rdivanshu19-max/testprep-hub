@@ -246,9 +246,13 @@ function Builder() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Editor */}
           <div className="rounded-xl border border-border bg-card p-4">
-            <h2 className="mb-3 text-sm font-semibold">
-              {current.id ? "Edit question" : "New question"}
-            </h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">
+                {current.id ? "Edit question" : "New question"}
+              </h2>
+              {current.id && <SaveBadge state={qSaveState} />}
+            </div>
+
             <div className="space-y-3">
               <div>
                 <Label>Type</Label>
