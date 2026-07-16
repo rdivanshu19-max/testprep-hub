@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { Check } from "lucide-react";
+
 
 import {
   getTestForEdit,
@@ -110,18 +112,66 @@ function Builder() {
 
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState(60);
+  const [metaSaveState, setMetaSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [qSaveState, setQSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const metaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrated = useRef(false);
+
   useEffect(() => {
-    if (data?.test) {
+    if (data?.test && !hydrated.current) {
       setTitle(data.test.title);
       setDuration(data.test.duration_min);
+      hydrated.current = true;
     }
   }, [data?.test]);
 
   const saveMeta = useMutation({
     mutationFn: () =>
       updateMeta({ data: { testId, title, duration_min: duration } }),
-    onSuccess: () => toast.success("Test details saved"),
+    onMutate: () => setMetaSaveState("saving"),
+    onSuccess: () => {
+      setMetaSaveState("saved");
+      setTimeout(() => setMetaSaveState((s) => s === "saved" ? "idle" : s), 1500);
+    },
   });
+
+  // Autosave meta on change (debounced)
+  useEffect(() => {
+    if (!hydrated.current) return;
+    if (!title.trim()) return;
+    if (metaTimer.current) clearTimeout(metaTimer.current);
+    metaTimer.current = setTimeout(() => saveMeta.mutate(), 800);
+    return () => { if (metaTimer.current) clearTimeout(metaTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, duration]);
+
+  // Autosave current question when editing an existing one (has id) — debounced
+  useEffect(() => {
+    if (!current.id) return;
+    if (!current.question_text.trim()) return;
+    if (qTimer.current) clearTimeout(qTimer.current);
+    qTimer.current = setTimeout(async () => {
+      setQSaveState("saving");
+      try {
+        await upsert({
+          data: {
+            testId,
+            order_index: 0,
+            question: { ...current, difficulty: "medium" },
+          },
+        });
+        setQSaveState("saved");
+        qc.invalidateQueries({ queryKey: ["test-builder", testId] });
+        setTimeout(() => setQSaveState((s) => s === "saved" ? "idle" : s), 1500);
+      } catch (e) {
+        setQSaveState("idle");
+      }
+    }, 1200);
+    return () => { if (qTimer.current) clearTimeout(qTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+
 
   if (isLoading || !data) {
     return <main className="p-8 text-muted-foreground">Loading test builder…</main>;
@@ -154,6 +204,10 @@ function Builder() {
 
       {/* Meta */}
       <div className="mb-6 rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Test details</h2>
+          <SaveBadge state={metaSaveState} />
+        </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="md:col-span-2">
             <Label>Title</Label>
@@ -168,12 +222,9 @@ function Builder() {
             />
           </div>
         </div>
-        <div className="mt-3">
-          <Button size="sm" variant="outline" onClick={() => saveMeta.mutate()}>
-            Save details
-          </Button>
-        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">Changes autosave.</p>
       </div>
+
 
       {/* Tabs */}
       <div className="mb-4 flex gap-2 border-b border-border">
@@ -195,9 +246,13 @@ function Builder() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Editor */}
           <div className="rounded-xl border border-border bg-card p-4">
-            <h2 className="mb-3 text-sm font-semibold">
-              {current.id ? "Edit question" : "New question"}
-            </h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">
+                {current.id ? "Edit question" : "New question"}
+              </h2>
+              {current.id && <SaveBadge state={qSaveState} />}
+            </div>
+
             <div className="space-y-3">
               <div>
                 <Label>Type</Label>
@@ -393,4 +448,11 @@ function MathText({ text }: { text: string }) {
     </span>
   );
 }
+
+function SaveBadge({ state }: { state: "idle" | "saving" | "saved" }) {
+  if (state === "saving") return <span className="font-mono text-[10px] text-muted-foreground animate-pulse">Saving…</span>;
+  if (state === "saved") return <span className="flex items-center gap-1 font-mono text-[10px] text-emerald-400"><Check className="h-3 w-3" /> Autosaved</span>;
+  return <span className="font-mono text-[10px] text-muted-foreground">Autosave on</span>;
+}
+
 
