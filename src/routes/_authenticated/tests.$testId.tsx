@@ -130,10 +130,13 @@ function TestPlayer() {
   useEffect(() => {
     if (answersQ.data) {
       const init: typeof answers = {};
+      let hasAny = false;
       for (const [k, v] of Object.entries(answersQ.data as any)) {
         init[k] = { chosen: (v as any).chosen_answer, marked: (v as any).marked_for_review, visited: (v as any).visited };
+        if ((v as any).chosen_answer != null || (v as any).visited) hasAny = true;
       }
       setAnswers(init);
+      if (hasAny) setShowResumeBanner(true);
     }
   }, [answersQ.data]);
 
