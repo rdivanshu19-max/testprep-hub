@@ -312,6 +312,11 @@ function TestPlayer() {
       } else if (e.key.toLowerCase() === "c") {
         setChosen(current.id, undefined);
       }
+      } else if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        setShowHelp((s) => !s);
+      } else if (e.key === "Escape") {
+        setShowHelp(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
