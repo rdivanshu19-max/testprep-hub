@@ -513,6 +513,89 @@ function TestPlayer() {
           </div>
         </aside>
       </div>
+
+      {showResumeBanner && (
+        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-primary/50 bg-card px-4 py-2.5 text-sm shadow-lg">
+          <span className="font-medium">Welcome back —</span>{" "}
+          <span className="text-muted-foreground">resumed from your last autosave.</span>
+          <button className="ml-3 rounded border border-border px-2 py-0.5 text-xs hover:bg-accent" onClick={() => setShowResumeBanner(false)}>Dismiss</button>
+        </div>
+      )}
+
+      {showHelp && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" onClick={() => setShowHelp(false)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="font-semibold">Keyboard shortcuts</div>
+              <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowHelp(false)}>Close (Esc)</button>
+            </div>
+            <dl className="grid grid-cols-2 gap-y-2 text-sm">
+              <dt className="font-mono text-xs text-muted-foreground">1 – 9</dt><dd>Select option</dd>
+              <dt className="font-mono text-xs text-muted-foreground">N</dt><dd>Next question</dd>
+              <dt className="font-mono text-xs text-muted-foreground">P</dt><dd>Previous question</dd>
+              <dt className="font-mono text-xs text-muted-foreground">M</dt><dd>Mark for review</dd>
+              <dt className="font-mono text-xs text-muted-foreground">C</dt><dd>Clear answer</dd>
+              <dt className="font-mono text-xs text-muted-foreground">?</dt><dd>Toggle this help</dd>
+            </dl>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntegerInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const keys = ["1","2","3","4","5","6","7","8","9",".","0","-"];
+  const append = (k: string) => {
+    if (k === "-") {
+      onChange(value.startsWith("-") ? value.slice(1) : "-" + value);
+      return;
+    }
+    if (k === "." && value.includes(".")) return;
+    onChange((value ?? "") + k);
+  };
+  const backspace = () => onChange((value ?? "").slice(0, -1));
+  return (
+    <div className="mt-8">
+      <label className="mb-2 block font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Numerical answer</label>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value ?? ""}
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^0-9.\-]/g, "");
+          onChange(v);
+        }}
+        placeholder="Enter numerical value"
+        className="w-full rounded-lg border border-border bg-background px-4 py-3 text-lg font-mono tabular-nums focus:border-primary focus:outline-none"
+      />
+      <div className="mt-3 grid max-w-xs grid-cols-3 gap-2">
+        {keys.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => append(k)}
+            className="rounded-md border border-border bg-card py-2 font-mono text-sm hover:border-primary hover:bg-accent"
+          >
+            {k}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={backspace}
+          className="col-span-2 rounded-md border border-border bg-card py-2 font-mono text-xs hover:border-primary hover:bg-accent"
+        >
+          ⌫ Backspace
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="rounded-md border border-border bg-card py-2 font-mono text-xs hover:border-destructive hover:text-destructive"
+        >
+          Clear
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">Use digits, decimal point, or minus for negative values (JEE/NEET style).</p>
     </div>
   );
 }
