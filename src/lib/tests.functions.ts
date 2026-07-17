@@ -495,7 +495,7 @@ export const logTestAudit = createServerFn({ method: "POST" })
       entity: data.entity,
       entity_id: data.entity_id ?? null,
       summary: data.summary ?? null,
-      diff: data.diff ?? null,
+      diff: (data.diff ?? null) as never,
     });
     if (error) throw new Error(error.message);
     return { ok: true };
