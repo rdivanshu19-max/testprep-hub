@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { InlineMath, BlockMath } from "@/components/math";
-import { Bookmark, Maximize2, Minimize2, Check } from "lucide-react";
+import { Bookmark, Maximize2, Minimize2, Check, Keyboard, Delete } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/tests/$testId")({
   head: () => ({ meta: [{ title: "Test — RankersTestHub" }] }),
