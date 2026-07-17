@@ -420,28 +420,37 @@ function TestPlayer() {
             </>
           )}
 
-          <div className="mt-8 space-y-3">
-            {opts.map((o, i) => {
-              const selected = answers[current.id]?.chosen === o.value;
-              return (
-                <button
-                  key={o.value}
-                  onClick={() => setChosen(current.id, o.value)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-left text-sm transition",
-                    selected ? "border-primary bg-primary/10" : "border-border hover:border-foreground/40",
-                  )}
-                >
-                  <span className={cn(
-                    "grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-xs",
-                    selected ? "border-primary bg-primary text-primary-foreground" : "border-current",
-                  )}>{o.value}</span>
-                  <span className="flex-1">{renderMath(o.label)}</span>
-                  <span className="font-mono text-[10px] text-muted-foreground">{i + 1}</span>
-                </button>
-              );
-            })}
-          </div>
+          {(() => {
+            const t = String(current.type || "").toLowerCase();
+            const isInteger = t.includes("integer") || t.includes("numeric") || t === "nat" || t === "nv";
+            if (isInteger) {
+              return <IntegerInput value={answers[current.id]?.chosen ?? ""} onChange={(v) => setChosen(current.id, v || undefined)} />;
+            }
+            return (
+              <div className="mt-8 space-y-3">
+                {opts.map((o, i) => {
+                  const selected = answers[current.id]?.chosen === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      onClick={() => setChosen(current.id, o.value)}
+                      className={cn(
+                        "flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-left text-sm transition",
+                        selected ? "border-primary bg-primary/10" : "border-border hover:border-foreground/40",
+                      )}
+                    >
+                      <span className={cn(
+                        "grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-xs",
+                        selected ? "border-primary bg-primary text-primary-foreground" : "border-current",
+                      )}>{o.value}</span>
+                      <span className="flex-1">{renderMath(o.label)}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{i + 1}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
             <Button variant="outline" onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}>
