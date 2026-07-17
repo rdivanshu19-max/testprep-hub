@@ -21,8 +21,11 @@ export type Database = {
           created_at: string
           id: string
           is_correct: boolean | null
+          last_saved_at: string | null
           marked_for_review: boolean
+          notes: string | null
           question_id: string
+          tags: string[] | null
           time_spent_sec: number
           updated_at: string
           visited: boolean
@@ -33,8 +36,11 @@ export type Database = {
           created_at?: string
           id?: string
           is_correct?: boolean | null
+          last_saved_at?: string | null
           marked_for_review?: boolean
+          notes?: string | null
           question_id: string
+          tags?: string[] | null
           time_spent_sec?: number
           updated_at?: string
           visited?: boolean
@@ -45,8 +51,11 @@ export type Database = {
           created_at?: string
           id?: string
           is_correct?: boolean | null
+          last_saved_at?: string | null
           marked_for_review?: boolean
+          notes?: string | null
           question_id?: string
+          tags?: string[] | null
           time_spent_sec?: number
           updated_at?: string
           visited?: boolean
@@ -579,6 +588,7 @@ export type Database = {
           created_at: string
           id: string
           incorrect_count: number
+          last_activity_at: string | null
           score: number | null
           started_at: string
           status: Database["public"]["Enums"]["attempt_status"]
@@ -595,6 +605,7 @@ export type Database = {
           created_at?: string
           id?: string
           incorrect_count?: number
+          last_activity_at?: string | null
           score?: number | null
           started_at?: string
           status?: Database["public"]["Enums"]["attempt_status"]
@@ -611,6 +622,7 @@ export type Database = {
           created_at?: string
           id?: string
           incorrect_count?: number
+          last_activity_at?: string | null
           score?: number | null
           started_at?: string
           status?: Database["public"]["Enums"]["attempt_status"]
@@ -625,6 +637,50 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "test_attempts_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_builder_audit: {
+        Row: {
+          action: string
+          actor_id: string
+          created_at: string
+          diff: Json | null
+          entity: string
+          entity_id: string | null
+          id: string
+          summary: string | null
+          test_id: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          created_at?: string
+          diff?: Json | null
+          entity: string
+          entity_id?: string | null
+          id?: string
+          summary?: string | null
+          test_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          created_at?: string
+          diff?: Json | null
+          entity?: string
+          entity_id?: string | null
+          id?: string
+          summary?: string | null
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_builder_audit_test_id_fkey"
             columns: ["test_id"]
             isOneToOne: false
             referencedRelation: "tests"

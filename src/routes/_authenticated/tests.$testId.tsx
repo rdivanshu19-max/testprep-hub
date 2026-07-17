@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { InlineMath, BlockMath } from "@/components/math";
-import { Bookmark, Maximize2, Minimize2, Check } from "lucide-react";
+import { Bookmark, Maximize2, Minimize2, Check, Keyboard, Delete } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/tests/$testId")({
   head: () => ({ meta: [{ title: "Test — RankersTestHub" }] }),
@@ -119,6 +119,8 @@ function TestPlayer() {
   const [tabSwitches, setTabSwitches] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
 
   const dirtyRef = useRef<Set<string>>(new Set());
   const answersRef = useRef(answers);
@@ -128,10 +130,13 @@ function TestPlayer() {
   useEffect(() => {
     if (answersQ.data) {
       const init: typeof answers = {};
+      let hasAny = false;
       for (const [k, v] of Object.entries(answersQ.data as any)) {
         init[k] = { chosen: (v as any).chosen_answer, marked: (v as any).marked_for_review, visited: (v as any).visited };
+        if ((v as any).chosen_answer != null || (v as any).visited) hasAny = true;
       }
       setAnswers(init);
+      if (hasAny) setShowResumeBanner(true);
     }
   }, [answersQ.data]);
 
@@ -306,6 +311,10 @@ function TestPlayer() {
         toggleMark(current.id);
       } else if (e.key.toLowerCase() === "c") {
         setChosen(current.id, undefined);
+      } else if (e.key === "?" || (e.shiftKey && e.key === "/")) {
+        setShowHelp((s) => !s);
+      } else if (e.key === "Escape") {
+        setShowHelp(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -366,7 +375,9 @@ function TestPlayer() {
           <span>Answered: <span className="font-mono text-foreground">{answered}</span></span>
           <span>Marked: <span className="font-mono text-foreground">{markedCount}</span></span>
           <span>Total: <span className="font-mono text-foreground">{questions.length}</span></span>
-          <span className="ml-auto hidden sm:inline">Shortcuts: 1–{Math.min(9, opts.length)} option · N next · P prev · M mark · C clear</span>
+          <span className="ml-auto hidden sm:inline">
+            <button onClick={() => setShowHelp(true)} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] hover:bg-accent">? shortcuts</button>
+          </span>
         </div>
       </div>
 
@@ -411,28 +422,37 @@ function TestPlayer() {
             </>
           )}
 
-          <div className="mt-8 space-y-3">
-            {opts.map((o, i) => {
-              const selected = answers[current.id]?.chosen === o.value;
-              return (
-                <button
-                  key={o.value}
-                  onClick={() => setChosen(current.id, o.value)}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-left text-sm transition",
-                    selected ? "border-primary bg-primary/10" : "border-border hover:border-foreground/40",
-                  )}
-                >
-                  <span className={cn(
-                    "grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-xs",
-                    selected ? "border-primary bg-primary text-primary-foreground" : "border-current",
-                  )}>{o.value}</span>
-                  <span className="flex-1">{renderMath(o.label)}</span>
-                  <span className="font-mono text-[10px] text-muted-foreground">{i + 1}</span>
-                </button>
-              );
-            })}
-          </div>
+          {(() => {
+            const t = String(current.type || "").toLowerCase();
+            const isInteger = t.includes("integer") || t.includes("numeric") || t === "nat" || t === "nv";
+            if (isInteger) {
+              return <IntegerInput value={answers[current.id]?.chosen ?? ""} onChange={(v) => setChosen(current.id, v || undefined)} />;
+            }
+            return (
+              <div className="mt-8 space-y-3">
+                {opts.map((o, i) => {
+                  const selected = answers[current.id]?.chosen === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      onClick={() => setChosen(current.id, o.value)}
+                      className={cn(
+                        "flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-left text-sm transition",
+                        selected ? "border-primary bg-primary/10" : "border-border hover:border-foreground/40",
+                      )}
+                    >
+                      <span className={cn(
+                        "grid h-6 w-6 shrink-0 place-items-center rounded-full border font-mono text-xs",
+                        selected ? "border-primary bg-primary text-primary-foreground" : "border-current",
+                      )}>{o.value}</span>
+                      <span className="flex-1">{renderMath(o.label)}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">{i + 1}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-2">
             <Button variant="outline" onClick={() => setIdx((i) => Math.max(0, i - 1))} disabled={idx === 0}>
@@ -495,6 +515,89 @@ function TestPlayer() {
           </div>
         </aside>
       </div>
+
+      {showResumeBanner && (
+        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-primary/50 bg-card px-4 py-2.5 text-sm shadow-lg">
+          <span className="font-medium">Welcome back —</span>{" "}
+          <span className="text-muted-foreground">resumed from your last autosave.</span>
+          <button className="ml-3 rounded border border-border px-2 py-0.5 text-xs hover:bg-accent" onClick={() => setShowResumeBanner(false)}>Dismiss</button>
+        </div>
+      )}
+
+      {showHelp && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-6" onClick={() => setShowHelp(false)}>
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <div className="font-semibold">Keyboard shortcuts</div>
+              <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setShowHelp(false)}>Close (Esc)</button>
+            </div>
+            <dl className="grid grid-cols-2 gap-y-2 text-sm">
+              <dt className="font-mono text-xs text-muted-foreground">1 – 9</dt><dd>Select option</dd>
+              <dt className="font-mono text-xs text-muted-foreground">N</dt><dd>Next question</dd>
+              <dt className="font-mono text-xs text-muted-foreground">P</dt><dd>Previous question</dd>
+              <dt className="font-mono text-xs text-muted-foreground">M</dt><dd>Mark for review</dd>
+              <dt className="font-mono text-xs text-muted-foreground">C</dt><dd>Clear answer</dd>
+              <dt className="font-mono text-xs text-muted-foreground">?</dt><dd>Toggle this help</dd>
+            </dl>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntegerInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const keys = ["1","2","3","4","5","6","7","8","9",".","0","-"];
+  const append = (k: string) => {
+    if (k === "-") {
+      onChange(value.startsWith("-") ? value.slice(1) : "-" + value);
+      return;
+    }
+    if (k === "." && value.includes(".")) return;
+    onChange((value ?? "") + k);
+  };
+  const backspace = () => onChange((value ?? "").slice(0, -1));
+  return (
+    <div className="mt-8">
+      <label className="mb-2 block font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Numerical answer</label>
+      <input
+        type="text"
+        inputMode="decimal"
+        value={value ?? ""}
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^0-9.\-]/g, "");
+          onChange(v);
+        }}
+        placeholder="Enter numerical value"
+        className="w-full rounded-lg border border-border bg-background px-4 py-3 text-lg font-mono tabular-nums focus:border-primary focus:outline-none"
+      />
+      <div className="mt-3 grid max-w-xs grid-cols-3 gap-2">
+        {keys.map((k) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => append(k)}
+            className="rounded-md border border-border bg-card py-2 font-mono text-sm hover:border-primary hover:bg-accent"
+          >
+            {k}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={backspace}
+          className="col-span-2 rounded-md border border-border bg-card py-2 font-mono text-xs hover:border-primary hover:bg-accent"
+        >
+          ⌫ Backspace
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="rounded-md border border-border bg-card py-2 font-mono text-xs hover:border-destructive hover:text-destructive"
+        >
+          Clear
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">Use digits, decimal point, or minus for negative values (JEE/NEET style).</p>
     </div>
   );
 }

@@ -435,3 +435,93 @@ export const continueExtractionManually = createServerFn({ method: "POST" })
     }
     return { testId: test.id, imported: inserted };
   });
+
+// ---------------------------------------------------------------------------
+// UPLOAD QUESTION IMAGE (returns long-lived signed URL)
+// ---------------------------------------------------------------------------
+
+export const uploadQuestionImage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        testId: z.string().uuid(),
+        filename: z.string().min(1).max(200),
+        contentType: z.string().min(1).max(80),
+        dataBase64: z.string().min(10),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const bytes = Uint8Array.from(atob(data.dataBase64), (c) => c.charCodeAt(0));
+    const safe = data.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `tests/${data.testId}/${Date.now()}-${safe}`;
+    const { error } = await context.supabase.storage
+      .from("question-images")
+      .upload(path, bytes, { contentType: data.contentType, upsert: false });
+    if (error) throw new Error(error.message);
+    const { data: signed, error: se } = await context.supabase.storage
+      .from("question-images")
+      .createSignedUrl(path, 60 * 60 * 24 * 365 * 5);
+    if (se || !signed) throw new Error(se?.message ?? "Failed to sign URL");
+    return { url: signed.signedUrl, path };
+  });
+
+// ---------------------------------------------------------------------------
+// TEST BUILDER AUDIT
+// ---------------------------------------------------------------------------
+
+export const logTestAudit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        testId: z.string().uuid(),
+        action: z.string().min(1),
+        entity: z.string().min(1),
+        entity_id: z.string().uuid().optional().nullable(),
+        summary: z.string().optional().nullable(),
+        diff: z.record(z.string(), z.unknown()).optional().nullable(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { error } = await context.supabase.from("test_builder_audit").insert({
+      test_id: data.testId,
+      actor_id: context.userId,
+      action: data.action,
+      entity: data.entity,
+      entity_id: data.entity_id ?? null,
+      summary: data.summary ?? null,
+      diff: (data.diff ?? null) as never,
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const getTestAudit = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ testId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { data: rows, error } = await context.supabase
+      .from("test_builder_audit")
+      .select("id, action, entity, entity_id, summary, diff, created_at, actor_id, profiles:profiles!test_builder_audit_actor_id_fkey(full_name)")
+      .eq("test_id", data.testId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (error) {
+      // profile FK may not exist; fall back
+      const { data: rows2 } = await context.supabase
+        .from("test_builder_audit")
+        .select("*")
+        .eq("test_id", data.testId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      return { entries: rows2 ?? [] };
+    }
+    return { entries: rows ?? [] };
+  });
+
