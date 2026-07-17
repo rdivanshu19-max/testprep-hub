@@ -119,6 +119,8 @@ function TestPlayer() {
   const [tabSwitches, setTabSwitches] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
 
   const dirtyRef = useRef<Set<string>>(new Set());
   const answersRef = useRef(answers);
