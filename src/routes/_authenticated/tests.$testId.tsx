@@ -375,7 +375,9 @@ function TestPlayer() {
           <span>Answered: <span className="font-mono text-foreground">{answered}</span></span>
           <span>Marked: <span className="font-mono text-foreground">{markedCount}</span></span>
           <span>Total: <span className="font-mono text-foreground">{questions.length}</span></span>
-          <span className="ml-auto hidden sm:inline">Shortcuts: 1–{Math.min(9, opts.length)} option · N next · P prev · M mark · C clear</span>
+          <span className="ml-auto hidden sm:inline">
+            <button onClick={() => setShowHelp(true)} className="rounded border border-border px-1.5 py-0.5 font-mono text-[10px] hover:bg-accent">? shortcuts</button>
+          </span>
         </div>
       </div>
 
