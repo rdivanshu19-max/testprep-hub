@@ -568,7 +568,7 @@ function Dashboard() {
 function QuickAction({ icon: Icon, label, to }: { icon: any; label: string; to: string }) {
   return (
     <Link
-      to={to}
+      to={to as any}
       className="flex flex-col items-start gap-2 rounded-lg border border-white/10 bg-white/5 p-3 text-sm transition hover:border-white/25 hover:bg-white/10"
     >
       <Icon className="h-4 w-4 text-indigo-300" />
