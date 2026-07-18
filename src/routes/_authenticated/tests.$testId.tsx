@@ -241,7 +241,7 @@ function TestPlayer() {
         total += scheme.correct ?? 4;
         const a = answersRef.current[q.id];
         if (!a?.chosen) { unattempted++; continue; }
-        const isCorrect = String(a.chosen).trim().toLowerCase() === String(q.correct_answer).trim().toLowerCase();
+        const isCorrect = normalizeAnswer(a.chosen, q.type) === normalizeAnswer(q.correct_answer, q.type);
         if (isCorrect) { correct++; score += scheme.correct ?? 4; }
         else { incorrect++; score += scheme.incorrect ?? -1; }
         await (supabase as any).from("attempt_answers").upsert(
@@ -519,7 +519,12 @@ function TestPlayer() {
       {showResumeBanner && (
         <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-primary/50 bg-card px-4 py-2.5 text-sm shadow-lg">
           <span className="font-medium">Welcome back —</span>{" "}
-          <span className="text-muted-foreground">resumed from your last autosave.</span>
+          <span className="text-muted-foreground">
+            resumed from your last autosave
+            {attemptQ.data?.last_activity_at && (
+              <> at <span className="font-mono text-foreground">{new Date(attemptQ.data.last_activity_at).toLocaleString()}</span></>
+            )}.
+          </span>
           <button className="ml-3 rounded border border-border px-2 py-0.5 text-xs hover:bg-accent" onClick={() => setShowResumeBanner(false)}>Dismiss</button>
         </div>
       )}
@@ -620,4 +625,22 @@ function Legend({ color, label }: { color: string; label: string }) {
       <span>{label}</span>
     </div>
   );
+}
+
+// Normalize answers for comparison.
+// - Integer/numeric: strip whitespace, leading '+', trailing zeros after decimal, "1.0" == "1", "-0" == "0".
+// - MCQ / text: case-insensitive trimmed compare, and support "A" == "a" == "1" for common coaching formats.
+function normalizeAnswer(v: string | undefined | null, type: string | undefined): string {
+  if (v == null) return "";
+  const s = String(v).trim();
+  const t = String(type || "").toLowerCase();
+  const isInt = t.includes("integer") || t.includes("numeric") || t === "nat" || t === "nv";
+  if (isInt) {
+    const cleaned = s.replace(/\s+/g, "").replace(/^\+/, "");
+    const n = Number(cleaned);
+    if (!Number.isFinite(n)) return cleaned;
+    // Normalize -0 to 0, drop trailing zeros
+    return Object.is(n, -0) ? "0" : String(n);
+  }
+  return s.toLowerCase();
 }
