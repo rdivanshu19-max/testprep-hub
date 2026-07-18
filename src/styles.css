@@ -165,3 +165,42 @@
   .font-mono { font-family: var(--font-mono); }
   .font-serif { font-family: var(--font-serif); }
 }
+
+/* Premium dark + glass utilities. Opt-in via `<div className="dark app-surface">`. */
+@utility app-surface {
+  position: relative;
+  background:
+    radial-gradient(1200px 700px at 12% -10%, oklch(0.35 0.14 274 / 0.35), transparent 60%),
+    radial-gradient(900px 600px at 100% 0%, oklch(0.32 0.13 200 / 0.22), transparent 55%),
+    radial-gradient(800px 600px at 50% 100%, oklch(0.30 0.14 320 / 0.18), transparent 60%),
+    linear-gradient(180deg, oklch(0.12 0.015 270) 0%, oklch(0.10 0.012 270) 100%);
+  min-height: 100vh;
+  color: var(--foreground);
+}
+
+@utility glass {
+  background: linear-gradient(180deg, oklch(1 0 0 / 0.06), oklch(1 0 0 / 0.02));
+  border: 1px solid oklch(1 0 0 / 0.10);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-radius: 1rem;
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.06) inset, 0 10px 40px -12px oklch(0 0 0 / 0.45);
+}
+
+@utility glass-strong {
+  background: linear-gradient(180deg, oklch(1 0 0 / 0.09), oklch(1 0 0 / 0.03));
+  border: 1px solid oklch(1 0 0 / 0.14);
+  backdrop-filter: blur(24px) saturate(160%);
+  border-radius: 1.25rem;
+  box-shadow: 0 1px 0 oklch(1 0 0 / 0.08) inset, 0 20px 60px -20px oklch(0 0 0 / 0.55);
+}
+
+@utility text-gradient-primary {
+  background: linear-gradient(135deg, oklch(0.92 0.06 274), oklch(0.78 0.14 274) 40%, oklch(0.72 0.16 200));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility ring-glow {
+  box-shadow: 0 0 0 1px oklch(0.78 0.13 274 / 0.5), 0 10px 40px -10px oklch(0.65 0.18 274 / 0.55);
+}
