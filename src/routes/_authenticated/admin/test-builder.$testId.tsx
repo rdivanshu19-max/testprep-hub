@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Check, ImagePlus, X } from "lucide-react";
 
 
 import {
@@ -12,6 +12,7 @@ import {
   removeTestQuestion,
   setTestStatus,
   updateTestMeta,
+  uploadQuestionImage,
   upsertQuestion,
 } from "@/lib/tests.functions";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ type QuestionForm = {
   options: Record<string, string>;
   correct_answer: string;
   type: "single_correct" | "integer";
+  question_image_url?: string | null;
 };
 
 const emptyQuestion = (): QuestionForm => ({
@@ -39,6 +41,7 @@ const emptyQuestion = (): QuestionForm => ({
   options: { A: "", B: "", C: "", D: "" },
   correct_answer: "A",
   type: "single_correct",
+  question_image_url: null,
 });
 
 function Builder() {
@@ -50,6 +53,8 @@ function Builder() {
   const updateMeta = useServerFn(updateTestMeta);
   const importText = useServerFn(importQuestionsFromText);
   const publish = useServerFn(setTestStatus);
+  const uploadImage = useServerFn(uploadQuestionImage);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["test-builder", testId],
@@ -281,6 +286,73 @@ function Builder() {
                 )}
               </div>
 
+              {/* Image upload */}
+              <div>
+                <Label>Question image (optional — diagram/graph)</Label>
+                <div className="mt-1 flex items-center gap-3">
+                  <input
+                    id="q-image"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      if (f.size > 5 * 1024 * 1024) {
+                        toast.error("Image must be under 5 MB");
+                        return;
+                      }
+                      setUploadingImage(true);
+                      try {
+                        const buf = await f.arrayBuffer();
+                        const bin = Array.from(new Uint8Array(buf)).map((b) => String.fromCharCode(b)).join("");
+                        const b64 = btoa(bin);
+                        const res = await uploadImage({
+                          data: { testId, filename: f.name, contentType: f.type || "image/png", dataBase64: b64 },
+                        });
+                        setCurrent((c) => ({ ...c, question_image_url: res.url }));
+                        toast.success("Image uploaded");
+                      } catch (err: any) {
+                        toast.error(err?.message || "Upload failed");
+                      } finally {
+                        setUploadingImage(false);
+                        (e.target as HTMLInputElement).value = "";
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={uploadingImage}
+                    onClick={() => document.getElementById("q-image")?.click()}
+                  >
+                    <ImagePlus className="mr-1 h-4 w-4" />
+                    {uploadingImage ? "Uploading…" : current.question_image_url ? "Replace image" : "Attach image"}
+                  </Button>
+                  {current.question_image_url && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setCurrent((c) => ({ ...c, question_image_url: null }))}
+                    >
+                      <X className="mr-1 h-3.5 w-3.5" /> Remove
+                    </Button>
+                  )}
+                </div>
+                {current.question_image_url && (
+                  <img
+                    src={current.question_image_url}
+                    alt="Question preview"
+                    className="mt-2 max-h-48 rounded-md border border-border"
+                  />
+                )}
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Upload diagrams/graphs when the question text alone is not enough. Max 5 MB.
+                </p>
+              </div>
+
               {current.type === "single_correct" && (
                 <div className="space-y-2">
                   <Label>Options</Label>
@@ -354,6 +426,7 @@ function Builder() {
                   options: Record<string, string>;
                   correct_answer: string;
                   type: QuestionForm["type"];
+                  question_image_url?: string | null;
                 };
                 return (
                   <div key={qq.id} className="rounded-md border border-border p-3">
@@ -378,6 +451,7 @@ function Builder() {
                               options: qq.options ?? {},
                               correct_answer: qq.correct_answer ?? "",
                               type: (qq.type === "integer" ? "integer" : "single_correct"),
+                              question_image_url: qq.question_image_url ?? null,
                             })
                           }
                         >
