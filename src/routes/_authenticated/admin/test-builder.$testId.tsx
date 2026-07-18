@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Check, ImagePlus, X } from "lucide-react";
 
 
 import {
@@ -12,6 +12,7 @@ import {
   removeTestQuestion,
   setTestStatus,
   updateTestMeta,
+  uploadQuestionImage,
   upsertQuestion,
 } from "@/lib/tests.functions";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ type QuestionForm = {
   options: Record<string, string>;
   correct_answer: string;
   type: "single_correct" | "integer";
+  question_image_url?: string | null;
 };
 
 const emptyQuestion = (): QuestionForm => ({
@@ -39,6 +41,7 @@ const emptyQuestion = (): QuestionForm => ({
   options: { A: "", B: "", C: "", D: "" },
   correct_answer: "A",
   type: "single_correct",
+  question_image_url: null,
 });
 
 function Builder() {
@@ -50,6 +53,8 @@ function Builder() {
   const updateMeta = useServerFn(updateTestMeta);
   const importText = useServerFn(importQuestionsFromText);
   const publish = useServerFn(setTestStatus);
+  const uploadImage = useServerFn(uploadQuestionImage);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["test-builder", testId],
