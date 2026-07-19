@@ -171,8 +171,8 @@ function Results() {
         </div>
 
         {/* Tabs */}
-        <div className="mt-10 flex gap-1 border-b border-border">
-          {(["overview","subjects","solutions","insights"] as Tab[]).map((t) => (
+        <div className="mt-10 flex flex-wrap gap-1 border-b border-border">
+          {(["overview","subjects","difficulty","time","report","solutions","proctor","insights"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -181,10 +181,11 @@ function Results() {
                 tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
               )}
             >
-              {t}
+              {t === "proctor" ? "Anti‑cheat" : t === "report" ? "Question report" : t}
             </button>
           ))}
         </div>
+
 
         {/* Overview */}
         {tab === "overview" && (
