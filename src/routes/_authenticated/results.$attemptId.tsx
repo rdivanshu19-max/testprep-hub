@@ -53,9 +53,10 @@ function Results() {
 
       const { data: ans, error: e2 } = await (supabase as any)
         .from("attempt_answers")
-        .select("*, question:questions(id, question_text, options, correct_answer, solution_text, subject_id, chapter_id, subjects(name))")
+        .select("*, question:questions(id, question_text, question_image_url, options, correct_answer, solution_text, difficulty, subject_id, chapter_id, subjects(name))")
         .eq("attempt_id", attemptId);
       if (e2) throw e2;
+
 
       return { attempt: a, answers: ans ?? [] };
     },
