@@ -449,3 +449,53 @@ function InsightCard({ title, body }: { title: string; body: string }) {
     </div>
   );
 }
+
+function ProctorPanel({ a }: { a: any }) {
+  const tabs = a.tab_switches ?? 0;
+  const focus = a.focus_losses ?? 0;
+  const fs = a.fullscreen_exits ?? 0;
+  const events = Array.isArray(a.proctoring_events) ? a.proctoring_events : [];
+  const total = tabs + focus + fs;
+  // Simple heuristic: 0 → 0%, 1–2 → 20%, 3–5 → 50%, 6–10 → 75%, 10+ → 95%
+  const prob = total === 0 ? 0 : total <= 2 ? 20 : total <= 5 ? 50 : total <= 10 ? 75 : 95;
+  const risk = prob >= 75 ? "High" : prob >= 40 ? "Medium" : prob > 0 ? "Low" : "None";
+  const riskClass = prob >= 75 ? "text-destructive" : prob >= 40 ? "text-amber-500" : prob > 0 ? "text-emerald-500" : "text-muted-foreground";
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="grid gap-3 sm:grid-cols-4">
+        <StatCard k="Tab switches" v={String(tabs)} />
+        <StatCard k="Focus losses" v={String(focus)} />
+        <StatCard k="Fullscreen exits" v={String(fs)} />
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="text-[11px] text-muted-foreground">Cheating probability</div>
+          <div className={"mt-1 font-mono text-xl font-semibold " + riskClass}>{prob}% · {risk}</div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+            <div className={"h-full " + (prob >= 75 ? "bg-destructive" : prob >= 40 ? "bg-amber-500" : "bg-emerald-500")} style={{ width: `${prob}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card p-5">
+        <h3 className="text-sm font-semibold">Suspicious activity timeline</h3>
+        {total === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">No suspicious activity was detected during this attempt.</p>
+        ) : events.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            {tabs} tab switch(es), {focus} focus loss(es), {fs} fullscreen exit(s) were recorded. Per‑event timestamps will appear here on future attempts.
+          </p>
+        ) : (
+          <ol className="mt-3 space-y-2">
+            {events.map((e: any, i: number) => (
+              <li key={i} className="flex items-start gap-3 rounded-md border border-border/50 bg-muted/20 p-2 text-xs">
+                <span className="font-mono text-muted-foreground">{e.at ? new Date(e.at).toLocaleTimeString() : "—"}</span>
+                <span className="capitalize">{e.type ?? "event"}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </div>
+  );
+}
+
