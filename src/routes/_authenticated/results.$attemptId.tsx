@@ -75,6 +75,7 @@ function Results() {
 
     // Subject breakdown
     const subjMap: Record<string, { name: string; correct: number; wrong: number; skipped: number; total: number }> = {};
+    const diffMap: Record<string, { name: string; correct: number; wrong: number; skipped: number; total: number }> = {};
     for (const row of data.answers as any[]) {
       const sname = row.question?.subjects?.name ?? "General";
       const entry = subjMap[sname] ?? { name: sname, correct: 0, wrong: 0, skipped: 0, total: 0 };
@@ -83,9 +84,18 @@ function Results() {
       else if (row.is_correct) entry.correct += 1;
       else entry.wrong += 1;
       subjMap[sname] = entry;
+
+      const dname = row.question?.difficulty ?? "unrated";
+      const dentry = diffMap[dname] ?? { name: dname, correct: 0, wrong: 0, skipped: 0, total: 0 };
+      dentry.total += 1;
+      if (row.chosen_answer == null) dentry.skipped += 1;
+      else if (row.is_correct) dentry.correct += 1;
+      else dentry.wrong += 1;
+      diffMap[dname] = dentry;
     }
-    return { accuracy, attemptRate, timeMin, timeSec, avgPerQ, subjects: Object.values(subjMap), attempted, total };
+    return { accuracy, attemptRate, timeMin, timeSec, avgPerQ, subjects: Object.values(subjMap), difficulty: Object.values(diffMap), attempted, total };
   }, [data]);
+
 
   if (isLoading) {
     return (
