@@ -242,6 +242,94 @@ function Results() {
           </div>
         )}
 
+        {/* Difficulty */}
+        {tab === "difficulty" && (
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {stats?.difficulty.length === 0 && <p className="text-sm text-muted-foreground">No difficulty labels on these questions.</p>}
+            {stats?.difficulty.map((d) => {
+              const acc = d.correct + d.wrong > 0 ? Math.round((d.correct / (d.correct + d.wrong)) * 100) : 0;
+              return (
+                <div key={d.name} className="rounded-xl border border-border bg-card p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="font-semibold capitalize">{d.name}</div>
+                    <span className="font-mono text-sm text-muted-foreground">{d.total} Q</span>
+                  </div>
+                  <div className="mt-2 font-mono text-2xl">{acc}%</div>
+                  <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="bg-emerald-500" style={{ width: `${(d.correct / d.total) * 100}%` }} />
+                    <div className="bg-destructive" style={{ width: `${(d.wrong / d.total) * 100}%` }} />
+                    <div className="bg-muted-foreground/30" style={{ width: `${(d.skipped / d.total) * 100}%` }} />
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-1 font-mono text-[10px] text-muted-foreground">
+                    <span>✓ {d.correct}</span><span>✗ {d.wrong}</span><span>− {d.skipped}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Time management */}
+        {tab === "time" && (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard k="Total time" v={`${stats?.timeMin ?? 0}m ${stats?.timeSec ?? 0}s`} />
+            <StatCard k="Allotted" v={`${a.test?.duration_min ?? 0}m`} />
+            <StatCard k="Avg / question" v={`${stats?.avgPerQ ?? 0}s`} />
+            <StatCard k="Ideal / question" v={`${a.test?.duration_min && stats?.total ? Math.round((a.test.duration_min * 60) / stats.total) : 0}s`} />
+            <div className="sm:col-span-2 lg:col-span-4 rounded-xl border border-border bg-card p-5">
+              <h3 className="text-sm font-semibold">Pacing</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                You used {Math.round(((a.time_spent_sec ?? 0) / ((a.test?.duration_min ?? 1) * 60)) * 100)}% of the allotted window.
+                {((stats?.avgPerQ ?? 0) > 90) ? " Consider skipping tough questions on the first pass and returning later." : " Your average per question is within a healthy band."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Question report — compact table */}
+        {tab === "report" && (
+          <div className="mt-6 overflow-hidden rounded-xl border border-border bg-card">
+            <table className="w-full text-sm">
+              <thead className="border-b border-border bg-muted/30 text-xs">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium">#</th>
+                  <th className="px-3 py-2 text-left font-medium">Subject</th>
+                  <th className="px-3 py-2 text-left font-medium">Difficulty</th>
+                  <th className="px-3 py-2 text-left font-medium">Your answer</th>
+                  <th className="px-3 py-2 text-left font-medium">Correct</th>
+                  <th className="px-3 py-2 text-left font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data.answers as any[]).map((row, i) => {
+                  const q = row.question;
+                  const status = row.chosen_answer == null ? "skipped" : row.is_correct ? "correct" : "wrong";
+                  return (
+                    <tr key={row.id} className="border-b border-border/50 last:border-0 hover:bg-muted/20">
+                      <td className="px-3 py-2 font-mono text-xs">Q{i + 1}</td>
+                      <td className="px-3 py-2 text-xs">{q?.subjects?.name ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs capitalize">{q?.difficulty ?? "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{row.chosen_answer ?? "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{q?.correct_answer ?? "—"}</td>
+                      <td className="px-3 py-2">
+                        {status === "correct" && <span className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-mono uppercase text-emerald-600 dark:text-emerald-300">Correct</span>}
+                        {status === "wrong" && <span className="rounded-md bg-destructive/10 px-2 py-0.5 text-[10px] font-mono uppercase text-destructive">Wrong</span>}
+                        {status === "skipped" && <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-mono uppercase text-muted-foreground">Skipped</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Anti‑cheat / proctoring */}
+        {tab === "proctor" && (
+          <ProctorPanel a={a} />
+        )}
+
+
         {/* Insights */}
         {tab === "insights" && (
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
