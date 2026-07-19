@@ -34,7 +34,7 @@ function renderMath(text: string) {
   });
 }
 
-type Tab = "overview" | "subjects" | "solutions" | "insights";
+type Tab = "overview" | "subjects" | "difficulty" | "time" | "report" | "solutions" | "insights" | "proctor";
 
 function Results() {
   const { attemptId } = Route.useParams();
