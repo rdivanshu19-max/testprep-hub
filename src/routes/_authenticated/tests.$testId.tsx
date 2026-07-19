@@ -264,7 +264,11 @@ function TestPlayer() {
         correct_count: correct,
         incorrect_count: incorrect,
         unattempted_count: unattempted,
+        tab_switches: tabSwitches,
+        focus_losses: focusLosses,
+        fullscreen_exits: fullscreenExits,
       }).eq("id", attemptQ.data.id);
+
       return attemptQ.data.id;
     },
     onSuccess: (attemptId) => {
