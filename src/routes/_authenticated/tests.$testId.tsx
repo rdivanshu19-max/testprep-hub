@@ -163,9 +163,11 @@ function TestPlayer() {
     });
   }, [current?.id]);
 
-  // Tab-switch counter
+  // Anti-cheat counters
+  const [focusLosses, setFocusLosses] = useState(0);
+  const [fullscreenExits, setFullscreenExits] = useState(0);
   useEffect(() => {
-    const onBlur = () => setTabSwitches((n) => n + 1);
+    const onBlur = () => setFocusLosses((n) => n + 1);
     const onVis = () => { if (document.hidden) setTabSwitches((n) => n + 1); };
     window.addEventListener("blur", onBlur);
     document.addEventListener("visibilitychange", onVis);
@@ -177,10 +179,14 @@ function TestPlayer() {
 
   // Fullscreen tracking
   useEffect(() => {
-    const onFs = () => setIsFullscreen(!!document.fullscreenElement);
+    const onFs = () => {
+      const active = !!document.fullscreenElement;
+      setIsFullscreen((was) => { if (was && !active) setFullscreenExits((n) => n + 1); return active; });
+    };
     document.addEventListener("fullscreenchange", onFs);
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
+
 
   const flushSave = useCallback(async () => {
     if (!attemptQ.data) return;
