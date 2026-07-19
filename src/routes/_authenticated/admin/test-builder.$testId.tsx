@@ -496,11 +496,15 @@ Answer: A`}</pre>
             onChange={(e) => setImportInput(e.target.value)}
             placeholder="Paste your questions here…"
           />
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Need diagrams? Import the text first, then switch to the <span className="font-medium">Manual</span> tab and click any question to attach an image.
+          </p>
           <div className="mt-3">
             <Button onClick={() => runImport.mutate()} disabled={!importInput.trim() || runImport.isPending}>
               {runImport.isPending ? "Importing…" : "Import"}
             </Button>
           </div>
+
         </div>
       )}
     </main>

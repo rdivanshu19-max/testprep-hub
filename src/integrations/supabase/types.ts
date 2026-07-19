@@ -586,13 +586,17 @@ export type Database = {
         Row: {
           correct_count: number
           created_at: string
+          focus_losses: number
+          fullscreen_exits: number
           id: string
           incorrect_count: number
           last_activity_at: string | null
+          proctoring_events: Json
           score: number | null
           started_at: string
           status: Database["public"]["Enums"]["attempt_status"]
           submitted_at: string | null
+          tab_switches: number
           test_id: string
           time_spent_sec: number
           total_marks: number | null
@@ -603,13 +607,17 @@ export type Database = {
         Insert: {
           correct_count?: number
           created_at?: string
+          focus_losses?: number
+          fullscreen_exits?: number
           id?: string
           incorrect_count?: number
           last_activity_at?: string | null
+          proctoring_events?: Json
           score?: number | null
           started_at?: string
           status?: Database["public"]["Enums"]["attempt_status"]
           submitted_at?: string | null
+          tab_switches?: number
           test_id: string
           time_spent_sec?: number
           total_marks?: number | null
@@ -620,13 +628,17 @@ export type Database = {
         Update: {
           correct_count?: number
           created_at?: string
+          focus_losses?: number
+          fullscreen_exits?: number
           id?: string
           incorrect_count?: number
           last_activity_at?: string | null
+          proctoring_events?: Json
           score?: number | null
           started_at?: string
           status?: Database["public"]["Enums"]["attempt_status"]
           submitted_at?: string | null
+          tab_switches?: number
           test_id?: string
           time_spent_sec?: number
           total_marks?: number | null
