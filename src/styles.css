@@ -166,7 +166,17 @@
   .font-serif { font-family: var(--font-serif); }
 }
 
-/* Premium dark + glass utilities. Opt-in via `<div className="dark app-surface">`. */
+/* Subtle theme-aware tinted surface for authenticated app pages. */
+@utility app-surface-tinted {
+  position: relative;
+  background-image:
+    radial-gradient(900px 500px at 10% -10%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 60%),
+    radial-gradient(700px 500px at 100% 0%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 55%);
+  background-color: var(--color-background);
+  min-height: 100vh;
+}
+
+/* Legacy premium dark surface — kept for pages that opt into it explicitly. */
 @utility app-surface {
   position: relative;
   background:
@@ -177,6 +187,7 @@
   min-height: 100vh;
   color: var(--foreground);
 }
+
 
 @utility glass {
   background: linear-gradient(180deg, oklch(1 0 0 / 0.06), oklch(1 0 0 / 0.02));
